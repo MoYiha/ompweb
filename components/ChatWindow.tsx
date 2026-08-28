@@ -17,6 +17,7 @@ import { useAudio } from "@/hooks/useAudio";
 import { useDragDrop } from "@/hooks/useDragDrop";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import type { SessionStatsInfo, GenerationSpeedInfo } from "@/lib/pi-types";
+import type { ProviderUsageContext } from "@/lib/provider-usage-types";
 import { normalizeCustomPanelLines, parseAnsiLine } from "@/lib/ansi";
 import { resolveAvailableThinkingLevels } from "@/lib/thinking-levels";
 import { asBracketedPaste, toTerminalKeyData } from "@/lib/terminal-input";
@@ -41,6 +42,7 @@ interface Props {
   onSystemPromptLoaderChange?: (loader: (() => Promise<void>) | null) => void;
   onSessionStatsChange?: (stats: SessionStatsInfo | null) => void;
   onSessionStatsPanelOpen?: () => void;
+  onProviderUsageContextChange?: (context: ProviderUsageContext | null) => void;
   onContextUsageChange?: (usage: { percent: number | null; contextWindow: number; tokens: number | null } | null) => void;
   onModelCapacityChange?: (capacity: { contextWindow?: number; maxTokens?: number } | null) => void;
   onOpenFile?: (filePath: string) => void;
@@ -415,7 +417,7 @@ const CommittedTranscript = memo(function CommittedTranscript({
   );
 });
 
-export function ChatWindow({ session, newSessionCwd, toolCallsDefaultCollapsed = true, onAgentEnd, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSystemPromptLoaderChange, onSessionStatsChange, onSessionStatsPanelOpen, onContextUsageChange, onModelCapacityChange, onGenerationSpeedChange, onOpenFile }: Props) {
+export function ChatWindow({ session, newSessionCwd, toolCallsDefaultCollapsed = true, onAgentEnd, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSystemPromptLoaderChange, onSessionStatsChange, onSessionStatsPanelOpen, onProviderUsageContextChange, onContextUsageChange, onModelCapacityChange, onGenerationSpeedChange, onOpenFile }: Props) {
   const { t, tn } = useI18n();
   const { playDoneSound, unlockAudio } = useAudio();
   const isMobile = useIsMobile();
@@ -471,6 +473,14 @@ export function ChatWindow({ session, newSessionCwd, toolCallsDefaultCollapsed =
   const modelCapacityRef = useRef(modelCapacity);
   modelCapacityRef.current = modelCapacity;
   useEffect(() => { onModelCapacityChange?.(modelCapacityRef.current); }, [modelCapacityKey, onModelCapacityChange]);
+  const providerUsageContext = useMemo<ProviderUsageContext | null>(
+    () => displayModelValue ? { provider: displayModelValue.provider, modelId: displayModelValue.modelId } : null,
+    [displayModelValue?.provider, displayModelValue?.modelId],
+  );
+  useEffect(() => {
+    onProviderUsageContextChange?.(providerUsageContext);
+    return () => onProviderUsageContextChange?.(null);
+  }, [onProviderUsageContextChange, providerUsageContext]);
   const hasCompaction = messages.some((message) => message.role === "custom" && (message as CustomMessage).customType === "compaction");
   const [generationSpeed, setGenerationSpeed] = useState<GenerationSpeedInfo | null>(null);
   const speedSamplesRef = useRef<number[]>([]);
