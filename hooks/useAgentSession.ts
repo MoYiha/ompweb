@@ -646,6 +646,21 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   useEffect(() => () => {
     if (extensionDialogClearTimerRef.current) clearTimeout(extensionDialogClearTimerRef.current);
   }, []);
+  const terminalReconcileTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const clearTerminalReconcileTimer = useCallback(() => {
+    if (terminalReconcileTimerRef.current) {
+      clearTimeout(terminalReconcileTimerRef.current);
+      terminalReconcileTimerRef.current = null;
+    }
+  }, []);
+  useEffect(() => () => {
+    clearTerminalReconcileTimer();
+  }, [clearTerminalReconcileTimer]);
+  // Blocks prompt submission while the initial hydration's live-state fetch is
+  // still pending. Without this, showLoading=false after disk messages lets
+  // a prompt increment runId before the stale pre-prompt state arrives and
+  // clobbers the new run's derived state (model/fast-mode).
+  const initialHydrationPendingRef = useRef(false);
   const [extensionCustomUi, setExtensionCustomUi] = useState<ExtensionUiCustomRequest | null>(null);
   const [extensionStatuses, setExtensionStatuses] = useState<ExtensionStatusItem[]>([]);
   const [extensionWidgets, setExtensionWidgets] = useState<ExtensionWidgetItem[]>([]);
@@ -1034,10 +1049,14 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       }
 
       messagesLoaded = true;
+      if (showLoading) setLoading(false);
       if (!includeState) {
-        if (showLoading) setLoading(false);
         return null;
       }
+
+      // Track initial hydration so prompt submission waits for the live state.
+      const isInitialHydration = showLoading && includeState;
+      if (isInitialHydration) initialHydrationPendingRef.current = true;
 
       try {
         // Capture the sequence token BEFORE the fetch: a response snapshotted
@@ -1082,12 +1101,17 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         console.error("Failed to load agent state:", e);
         if (showLoading) setLoading(false);
         return null;
+      } finally {
+        if (isInitialHydration) initialHydrationPendingRef.current = false;
       }
     } catch (e) {
       setError(String(e));
+      if (showLoading && includeState) initialHydrationPendingRef.current = false;
       return null;
     } finally {
       if (showLoading && !messagesLoaded) setLoading(false);
+      // Ensure the flag is cleared even if the pre-state early-return path was taken
+      if (showLoading && includeState && !messagesLoaded) initialHydrationPendingRef.current = false;
     }
   }, [refreshSubagentHistory, applyAuthoritativeModel, beginAuthoritativeModelSync]);
 
@@ -1642,6 +1666,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   }, [addNotice, opts.chatInputRef]);
 
   const finishPromptWithoutStream = useCallback(async (sid: string | null = sessionIdRef.current, runId?: number) => {
+    clearTerminalReconcileTimer();
     // Bail out before loadSession too: a stale finish for a previous run
     // must not overwrite the messages of the run currently streaming.
     if (runId !== undefined && promptRunIdRef.current !== runId) return;
@@ -1671,7 +1696,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       dispatch({ type: "end" });
       onAgentEnd?.();
     }
-  }, [loadSession, onAgentEnd, refreshSubagentHistory, resetSubagentActivityState]);
+  }, [clearTerminalReconcileTimer, loadSession, onAgentEnd, refreshSubagentHistory, resetSubagentActivityState]);
 
   const waitForPromptSettlement = useCallback(async (sid: string, runId?: number) => {
     await delay(PROMPT_SETTLE_INITIAL_DELAY_MS);
@@ -1910,10 +1935,10 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           interruptReplyPendingRef.current = false;
           break;
         }
+        clearTerminalReconcileTimer();
         // A late agent_end can arrive over SSE after reconcileAgentState
         // already finished this run — don't re-trigger completion.
         if (!agentRunningRef.current) break;
-        // Capture sid + runId BEFORE clearing: the terminal reload below is
         // async, and a next prompt (or session switch) that starts while it is
         // in flight must not be overwritten by this finished run's snapshot.
         const endedSid = sessionIdRef.current;
@@ -2089,6 +2114,24 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           // surface it as live advisor activity for the composer thunder icon.
           if ((completed as CustomMessage).customType === "advisor") setAdvisorActiveAt(Date.now());
           setMessages((prev) => [...prev, normalizeToolCalls(completed)]);
+        }
+        if (completed?.role === "assistant") {
+          clearTerminalReconcileTimer();
+          const targetSid = sessionIdRef.current;
+          const targetRunId = promptRunIdRef.current;
+          if (targetSid) {
+            terminalReconcileTimerRef.current = setTimeout(() => {
+              terminalReconcileTimerRef.current = null;
+              if (
+                hookAliveRef.current &&
+                agentRunningRef.current &&
+                sessionIdRef.current === targetSid &&
+                promptRunIdRef.current === targetRunId
+              ) {
+                void reconcileAgentState(targetSid);
+              }
+            }, 1000);
+          }
         }
         dispatch({ type: "reset" });
         setAgentPhase({ kind: "waiting_model" });
@@ -2281,13 +2324,14 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         handleExtensionUiRequest(event as unknown as IncomingExtensionUiRequest);
         break;
     }
-  }, [addNotice, consumeQueuedMessage, finishPromptWithoutStream, handleExtensionUiRequest, handleHostToolCall, handleHostUriRequest, loadSession, mergeSubagents, onAgentEnd, reconcileAgentState, resetSubagentActivityState, applyAuthoritativeModel, beginAuthoritativeModelSync]);
+  }, [addNotice, clearTerminalReconcileTimer, consumeQueuedMessage, finishPromptWithoutStream, handleExtensionUiRequest, handleHostToolCall, handleHostUriRequest, loadSession, mergeSubagents, onAgentEnd, reconcileAgentState, resetSubagentActivityState, applyAuthoritativeModel, beginAuthoritativeModelSync]);
   handleAgentEventRef.current = handleAgentEvent;
 
   const handleSend = useCallback(async (message: string, images?: AttachedImage[]): Promise<boolean> => {
     const trimmedMessage = message.trim();
     if (!trimmedMessage && !images?.length) return false;
     if (agentRunningRef.current || bashRunningRef.current) return false;
+    if (initialHydrationPendingRef.current) return false;
     const isSlashCommandPrompt = !images?.length && trimmedMessage.startsWith("/");
 
     const isBashCommand = !images?.length && trimmedMessage.startsWith("!");
@@ -2300,6 +2344,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     }
 
     const promptRunId = promptRunIdRef.current + 1;
+    clearTerminalReconcileTimer();
 
     const { userMsg, piImages } = buildOutgoingPrompt(message, images);
     setMessages((prev) => [...prev, userMsg]);
@@ -2391,7 +2436,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       dispatch({ type: "end" });
       return false;
     }
-  }, [isNew, newSessionCwd, newSessionModel, session, ensureNewSession, ensureEventsConnected, promoteNewSession, waitForPromptSettlement, addNotice, opts.chatInputRef, refreshSubagentRoster, registerHostTools, registerHostUriSchemes]);
+  }, [isNew, newSessionCwd, newSessionModel, session, ensureNewSession, ensureEventsConnected, promoteNewSession, waitForPromptSettlement, addNotice, opts.chatInputRef, refreshSubagentRoster, registerHostTools, registerHostUriSchemes, clearTerminalReconcileTimer]);
 
   /** Abort the running agent and send the message as a fresh prompt
    * (abort_and_prompt). Only valid mid-run; the old turn's agent_end is
@@ -2401,6 +2446,11 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     if (!trimmedMessage && !images?.length) return false;
     const sid = sessionIdRef.current;
     if (!sid || !agentRunningRef.current) return false;
+
+    clearTerminalReconcileTimer();
+    // Advance the run generation so late agent_end / prompt_error / stale
+    // loadSession from the aborted turn cannot stop or clobber the replacement.
+    promptRunIdRef.current += 1;
 
     const { userMsg, piImages: interruptPiImages } = buildOutgoingPrompt(message, images);
     setMessages((prev) => [...prev, userMsg]);
@@ -2434,7 +2484,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       addNotice({ type: "error", message: e instanceof Error ? e.message : String(e) });
       return false;
     }
-  }, [addNotice, ensureEventsConnected, refreshSubagentRoster]);
+  }, [addNotice, ensureEventsConnected, refreshSubagentRoster, clearTerminalReconcileTimer]);
 
   const executeBash = useCallback(async (command: string, excludeFromContext: boolean) => {
     if (agentRunningRef.current || bashRunningRef.current) return;
@@ -3070,6 +3120,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       });
     }
     return () => {
+      clearTerminalReconcileTimer();
       bashRecoveryIdRef.current += 1;
       eventCoalescerRef.current?.reset();
       eventSourceRef.current?.close();
