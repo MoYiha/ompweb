@@ -2,6 +2,7 @@
 
 import { memo, useEffect, useRef, useState, useCallback, useMemo, RefObject } from "react";
 import type { AgentMessage, AssistantMessage, TextContent } from "@/lib/types";
+import { MINIMAP_WIDTH } from "@/lib/chat-layout";
 
 interface Props {
   messages: AgentMessage[];
@@ -9,7 +10,6 @@ interface Props {
   messageRefs: RefObject<(HTMLDivElement | null)[]>;
 }
 
-const MINIMAP_WIDTH = 36;
 
 function getMessagePreview(msg: AgentMessage | Partial<AgentMessage>): string {
   if (msg.role === "user") {
@@ -70,9 +70,12 @@ export const ChatMinimap = memo(function ChatMinimap({ messages, scrollContainer
   const [nodes, setNodes] = useState<NodeInfo[]>([]);
   const [minimapHovered, setMinimapHovered] = useState(false);
   const [mouseYRatio, setMouseYRatio] = useState<number | null>(null);
+  const [hoveredTooltipIndex, setHoveredTooltipIndex] = useState<number | null>(null);
   const draggingRef = useRef(false);
   const dragListenersRef = useRef<{ onMove: (ev: MouseEvent) => void; onUp: () => void } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const overflowPanelRef = useRef<HTMLDivElement>(null);
+  const [minimapHeightPx, setMinimapHeightPx] = useState(600);
   // RAF gate for mousemove so a pixel-level pointer event doesn't re-render
   // the whole minimap (every node + tooltip) on every frame.
   const mouseMoveRafRef = useRef<number | null>(null);
@@ -216,8 +219,10 @@ export const ChatMinimap = memo(function ChatMinimap({ messages, scrollContainer
     if (!el) return;
     const scrollable = el.scrollHeight - el.clientHeight;
     if (scrollable <= 0) return;
-    const clamped = Math.max(0, Math.min(1 - viewportRatio, viewportTopRatio));
-    el.scrollTop = (clamped / (1 - viewportRatio)) * scrollable;
+    const denom = 1 - viewportRatio;
+    if (denom < 1e-6) return;
+    const clamped = Math.max(0, Math.min(denom, viewportTopRatio));
+    el.scrollTop = (clamped / denom) * scrollable;
   }, [scrollContainer, viewportRatio]);
 
   // Coalesce mousemove updates to one per animation frame: writing state on
@@ -252,7 +257,9 @@ export const ChatMinimap = memo(function ChatMinimap({ messages, scrollContainer
 
     const onMove = (ev: MouseEvent) => {
       if (!draggingRef.current) return;
-      const r = (ev.clientY - rect.top) / rect.height;
+      const curRect = containerRef.current?.getBoundingClientRect();
+      if (!curRect) return;
+      const r = (ev.clientY - curRect.top) / curRect.height;
       scrollToMinimapRatio(r - offset);
     };
     const onUp = () => {
@@ -280,10 +287,21 @@ export const ChatMinimap = memo(function ChatMinimap({ messages, scrollContainer
 
 
 
+  // Keep minimap height in state so tooltip layout updates on resize (ref reads don't trigger renders)
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const update = () => setMinimapHeightPx(el.clientHeight || 600);
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [visible]);
+
   // Compute collision-free tooltip positions for all nodes
   const TOOLTIP_HEIGHT = 22;
   const TOOLTIP_GAP = 2;
-  const minimapHeightPx = containerRef.current?.clientHeight ?? 600;
+  const tooltipListOverflows = nodes.length * (TOOLTIP_HEIGHT + TOOLTIP_GAP) > minimapHeightPx;
 
   // Per-node colors and previews are pure functions of each node's message;
   // memoize so they aren't recomputed on every scroll/mousemove re-render.
@@ -291,7 +309,7 @@ export const ChatMinimap = memo(function ChatMinimap({ messages, scrollContainer
   const nodePreviews = useMemo(() => nodes.map((node) => getMessagePreview(node.msg)), [nodes]);
 
   const tooltipPositions = useMemo(() => {
-    if (!minimapHovered || nodes.length === 0) return [];
+    if (!minimapHovered || nodes.length === 0 || tooltipListOverflows) return [];
     // Initial positions: centered on the dot
     const positions = nodes.map((node) =>
       Math.round(node.topRatio * minimapHeightPx - TOOLTIP_HEIGHT / 2)
@@ -312,26 +330,40 @@ export const ChatMinimap = memo(function ChatMinimap({ messages, scrollContainer
       positions[i] = Math.max(0, Math.min(minimapHeightPx - TOOLTIP_HEIGHT, positions[i]));
     }
     return positions;
-  }, [minimapHovered, nodes, minimapHeightPx]);
+  }, [minimapHovered, nodes, minimapHeightPx, tooltipListOverflows]);
+
+  // Find the node closest to the current mouse position; direct tooltip
+  // hover takes precedence (collision-free layout shifts tooltip positions
+  // away from their node's scroll ratio, so Y-distance is wrong there).
+  const computedNearest = mouseYRatio !== null && nodes.length > 0
+    ? nodes.reduce((best, node) => {
+        return Math.abs(node.topRatio - mouseYRatio) < Math.abs(nodes[best].topRatio - mouseYRatio) ? node.index : best;
+      }, 0)
+    : null;
+  const nearestIndex = hoveredTooltipIndex ?? computedNearest;
+
+  // Auto-scroll the overflow tooltip panel to keep the minimap-driven
+  // selection visible. Skipped when the user is directly hovering over the
+  // panel (hoveredTooltipIndex !== null) to avoid fighting manual scrolling.
+  useEffect(() => {
+    if (computedNearest === null || hoveredTooltipIndex !== null) return;
+    const panel = overflowPanelRef.current;
+    if (!panel) return;
+    const row = panel.querySelector(`[data-node-index="${computedNearest}"]`) as HTMLElement | null;
+    row?.scrollIntoView({ block: "nearest" });
+  }, [computedNearest, hoveredTooltipIndex]);
 
   if (!visible) return null;
 
   const viewportBoxTop = scrollRatio * (1 - viewportRatio) * 100;
   const viewportBoxHeight = viewportRatio * 100;
 
-  // Find the node closest to the current mouse position
-  const nearestIndex = mouseYRatio !== null && nodes.length > 0
-    ? nodes.reduce((best, node) => {
-        return Math.abs(node.topRatio - mouseYRatio) < Math.abs(nodes[best].topRatio - mouseYRatio) ? node.index : best;
-      }, 0)
-    : null;
-
   return (
     <div
       ref={containerRef}
       onMouseDown={handleMouseDown}
       onMouseEnter={() => setMinimapHovered(true)}
-      onMouseLeave={() => { setMinimapHovered(false); setMouseYRatio(null); }}
+      onMouseLeave={() => { setMinimapHovered(false); setMouseYRatio(null); setHoveredTooltipIndex(null); }}
       onMouseMove={handleMinimapMouseMove}
       style={{
         width: MINIMAP_WIDTH,
@@ -417,9 +449,96 @@ export const ChatMinimap = memo(function ChatMinimap({ messages, scrollContainer
           zIndex: 0,
         }}
       />
-
-      {/* Tooltips for all nodes, collision-free positions */}
-      {minimapHovered && nodes.map((node, i) => {
+      {/* Tooltip panel: scrollable list when overflowing, absolute-positioned when fits */}
+      {minimapHovered && nodes.length > 0 && tooltipListOverflows && (
+        <div
+          ref={overflowPanelRef}
+          onMouseDown={(e) => e.stopPropagation()}
+          style={{
+            position: "absolute",
+            top: 0,
+            bottom: 0,
+            right: "100%",
+            width: 206,
+            background: "var(--bg-panel)",
+            border: "1px solid var(--border)",
+            borderRadius: "var(--radius-control)",
+            boxShadow: "var(--shadow-pop)",
+            zIndex: 99,
+            pointerEvents: "auto",
+            overflowY: "auto",
+            overflowX: "hidden",
+          }}
+        >
+          {nodes.map((node, i) => {
+            const preview = nodePreviews[i] ?? getMessagePreview(node.msg);
+            const color = nodeColors[i] ?? getNodeColor(node.msg);
+            const isNearest = nearestIndex === node.index;
+            if (!preview) return null;
+            return (
+              <div
+                key={node.index}
+                data-node-index={node.index}
+                onMouseEnter={() => setHoveredTooltipIndex(node.index)}
+                onMouseLeave={() => setHoveredTooltipIndex(null)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const el = scrollContainer.current;
+                  if (!el) return;
+                  const max = el.scrollHeight - el.clientHeight;
+                  el.scrollTop = node.topRatio * Math.max(0, max);
+                }}
+                style={{
+                  padding: "2px 7px",
+                  borderLeft: `2px solid ${color.border}`,
+                  background: isNearest ? "var(--bg-hover)" : "transparent",
+                  cursor: "pointer",
+                  transition: "background var(--dur-fast) var(--ease-out-warm)",
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: 11,
+                    color: isNearest ? "var(--text)" : "var(--text-muted)",
+                    lineHeight: 1.4,
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                  }}
+                >
+                  {preview}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {minimapHovered && tooltipPositions.length > 0 && (() => {
+        // Opaque backdrop spanning first to last tooltip; width includes the
+        // 6px gutter so the mouse can't fall through the gap between the
+        // minimap strip and the tooltip panel.
+        const firstTop = tooltipPositions[0];
+        const lastBottom = tooltipPositions[tooltipPositions.length - 1] + TOOLTIP_HEIGHT;
+        return (
+          <div
+            onMouseDown={(e) => e.stopPropagation()}
+            style={{
+              position: "absolute",
+              top: firstTop - 4,
+              right: "100%",
+              width: 206,
+              height: lastBottom - firstTop + 8,
+              background: "var(--bg-panel)",
+              border: "1px solid var(--border)",
+              borderRadius: "var(--radius-control)",
+              boxShadow: "var(--shadow-pop)",
+              zIndex: 99,
+              pointerEvents: "auto",
+            }}
+          />
+        );
+      })()}
+      {minimapHovered && !tooltipListOverflows && nodes.map((node, i) => {
         const preview = nodePreviews[i] ?? getMessagePreview(node.msg);
         const color = nodeColors[i] ?? getNodeColor(node.msg);
         const isNearest = nearestIndex === node.index;
@@ -427,23 +546,29 @@ export const ChatMinimap = memo(function ChatMinimap({ messages, scrollContainer
         return (
           <div
             key={node.index}
+            onMouseDown={(e) => e.stopPropagation()}
+            onMouseEnter={() => setHoveredTooltipIndex(node.index)}
+            onMouseLeave={() => setHoveredTooltipIndex(null)}
+            onClick={(e) => {
+              e.stopPropagation();
+              const el = scrollContainer.current;
+              if (!el) return;
+              const max = el.scrollHeight - el.clientHeight;
+              el.scrollTop = node.topRatio * Math.max(0, max);
+            }}
             style={{
               position: "absolute",
               top: tooltipPositions[i],
               right: "100%",
-              marginRight: 6,
-              background: "var(--bg)",
-              borderTop: `1px solid ${isNearest ? color.border : "var(--border)"}`,
-              borderRight: `1px solid ${isNearest ? color.border : "var(--border)"}`,
-              borderBottom: `1px solid ${isNearest ? color.border : "var(--border)"}`,
+              marginRight: 3,
+              background: isNearest ? "var(--bg-hover)" : "var(--bg-panel)",
               borderLeft: `2px solid ${color.border}`,
-              borderRadius: 4,
+              borderRadius: 2,
               padding: "2px 7px",
               width: 200,
               zIndex: 100,
-              pointerEvents: "none",
-              opacity: isNearest ? 1 : 0.45,
-              transition: "top var(--dur-fast) var(--ease-out-warm), opacity var(--dur-fast) var(--ease-out-warm)",
+              cursor: "pointer",
+              transition: "top var(--dur-fast) var(--ease-out-warm), background var(--dur-fast) var(--ease-out-warm)",
             }}
           >
             <div
