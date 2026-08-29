@@ -26,6 +26,8 @@ import {
   normalizeFilePathSlashes,
 } from "@/lib/file-paths";
 import type { GitFileStatus, GitFileStatusKind, GitStatusResponse } from "@/lib/git-types";
+import { MAX_RESULT_LIMIT, type FileIndexEntry } from "@/lib/file-fuzzy";
+import { buildSearchRows } from "@/lib/search-results";
 
 interface FileEntry {
   name: string;
@@ -33,6 +35,11 @@ interface FileEntry {
   size: number;
   modified: string;
 }
+
+// Search rows are always files (the panel asks for kind=file), so they never
+// expand and every row shares these.
+const EMPTY_PATH_SET: Set<string> = new Set();
+const noop = () => {};
 
 interface FileNode {
   name: string;
@@ -51,6 +58,8 @@ interface Props {
   onAtMentions?: (relativePaths: string[]) => void;
   onUploadBusyChange?: (busy: boolean) => void;
   onRefreshDone?: () => void;
+  fileSearchOpen?: boolean;
+  onFileSearchOpenChange?: (open: boolean) => void;
 }
 
 export interface FileExplorerHandle {
@@ -204,6 +213,7 @@ function TreeNode({
   expandedPaths,
   onToggleExpanded,
   refreshToken,
+  secondaryLabel,
   highlightedPaths,
   gitStatusByPath,
   changedDirectoryPaths,
@@ -215,10 +225,13 @@ function TreeNode({
   onAtMention?: (relativePath: string, isDir: boolean) => void;
   expandedPaths: Set<string>;
   onToggleExpanded: (fullPath: string, open: boolean) => void;
-  refreshToken: string;
+  /** Undefined for search-result nodes, whose children are pre-resolved. */
+  refreshToken?: string;
   highlightedPaths: Set<string>;
   gitStatusByPath: Map<string, GitFileStatus>;
   changedDirectoryPaths: Set<string>;
+  /** Dimmed directory shown next to the name in flat search results. */
+  secondaryLabel?: string;
 }) {
   const { t } = useI18n();
   const open = expandedPaths.has(node.fullPath);
@@ -252,6 +265,7 @@ function TreeNode({
   // place; collapsed directories are marked stale so the next expand re-fetches
   // instead of showing a listing captured before the refresh.
   useEffect(() => {
+    if (refreshToken === undefined) return;
     if (open) {
       if (loaded) loadChildren(true);
     } else {
@@ -325,7 +339,11 @@ function TreeNode({
         tabIndex={0}
         aria-selected={highlighted}
         aria-expanded={node.isDir ? open : undefined}
-        aria-label={node.isDir ? (node.name + " (folder" + (open ? ", expanded" : ", collapsed") + ")") : (node.name + " (file)")}
+        // Search rows repeat names such as route.ts, so the directory has to be
+        // part of the accessible name, not just the dimmed text beside it.
+        aria-label={node.isDir
+          ? (node.name + " (folder" + (open ? ", expanded" : ", collapsed") + ")")
+          : (secondaryLabel ? (node.name + " (file, " + secondaryLabel + ")") : (node.name + " (file)"))}
         style={{
           position: "relative",
           display: "flex",
@@ -371,12 +389,34 @@ function TreeNode({
             overflow: "hidden",
             textOverflow: "ellipsis",
             whiteSpace: "nowrap",
-            flex: 1,
+            // The name is the answer the user is looking for, so the directory
+            // gives up width first.
+            flex: secondaryLabel ? "0 0 auto" : 1,
+            maxWidth: secondaryLabel ? "72%" : undefined,
           }}
           title={node.fullPath}
         >
           {node.name}
         </span>
+        {secondaryLabel && (
+          // Search rows are flat, so the directory is the only context a row has.
+          <span
+            style={{
+              flex: "1 1 auto",
+              minWidth: 0,
+              fontSize: 11,
+              color: "var(--text-dim)",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+              direction: "rtl",
+              textAlign: "left",
+            }}
+            title={node.fullPath}
+          >
+            {secondaryLabel}
+          </span>
+        )}
         {highlighted && (
           <span
             title={t("fileExplorer.newlyUploaded")}
@@ -526,6 +566,8 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileE
   onAtMentions,
   onUploadBusyChange,
   onRefreshDone,
+  fileSearchOpen = false,
+  onFileSearchOpenChange,
 }, ref) {
   const { t, tn } = useI18n();
   const [roots, setRoots] = useState<FileNode[]>([]);
@@ -540,10 +582,111 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileE
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploadSummary, setUploadSummary] = useState<UploadSummary | null>(null);
   const [pendingConflict, setPendingConflict] = useState<PendingConflict | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchPaths, setSearchPaths] = useState<string[]>([]);
+  const [searchTruncated, setSearchTruncated] = useState(false);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchFailed, setSearchFailed] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const prevCwdRef = useRef<string | null>(null);
   const uploadInputRef = useRef<HTMLInputElement>(null);
   const refreshToken = `${refreshKey ?? 0}:${treeRefreshKey}`;
+  // Which refresh the search request has already answered; re-baselined every
+  // time the panel opens.
+  const consumedRefreshTokenRef = useRef<string | null>(null);
   const uploadBusy = uploadPhase !== "idle";
+  const searchActive = fileSearchOpen && searchQuery.trim().length > 0;
+
+  // Opening the panel focuses the input; closing it resets the whole search,
+  // mirroring how the session search behaves.
+  useEffect(() => {
+    if (fileSearchOpen) {
+      // Baseline for forced refreshes: only a refresh after the panel opened
+      // counts. The sidebar bumps the explorer key once on mount, and nobody
+      // asked for that one.
+      consumedRefreshTokenRef.current = refreshToken;
+      searchInputRef.current?.focus();
+      return;
+    }
+    setSearchQuery("");
+    setSearchPaths([]);
+    setSearchTruncated(false);
+    setSearchLoading(false);
+    setSearchFailed(false);
+    // refreshToken is read as the value at open time on purpose: adding it to
+    // the deps would re-baseline on every refresh and swallow it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fileSearchOpen]);
+
+  // Debounced query against the same cached, bounded file index that backs
+  // the @ mention autocomplete. No second index.
+  useEffect(() => {
+    if (!fileSearchOpen) return;
+    const query = searchQuery.trim();
+    if (!query) {
+      setSearchPaths([]);
+      setSearchTruncated(false);
+      setSearchLoading(false);
+      setSearchFailed(false);
+      return;
+    }
+    const controller = new AbortController();
+    setSearchLoading(true);
+    setSearchFailed(false);
+    const timer = setTimeout(() => {
+      // Only a real refresh bypasses the index cache; typing must not force a
+      // fresh listing on every keystroke.
+      const requestedToken = refreshToken;
+      const forceRefresh = consumedRefreshTokenRef.current !== requestedToken;
+      const params = new URLSearchParams({
+        cwd,
+        q: query,
+        limit: String(MAX_RESULT_LIMIT),
+        // The panel lists files, so directories must be dropped before the
+        // limit is applied, not after.
+        kind: "file",
+      });
+      if (forceRefresh) params.set("refresh", "1");
+      fetch(`/api/file-index?${params.toString()}`, { signal: controller.signal })
+        .then((res) => res.ok
+          ? res.json() as Promise<{ matches?: FileIndexEntry[]; truncated?: boolean }>
+          : Promise.reject(new Error(`HTTP ${res.status}`)))
+        .then((data) => {
+          if (controller.signal.aborted) return;
+          // Acknowledge the refresh only now: a failed or aborted request must
+          // leave it pending so the next one still asks for a fresh listing.
+          consumedRefreshTokenRef.current = requestedToken;
+          setSearchPaths((data.matches ?? []).map((m) => m.path));
+          setSearchTruncated(Boolean(data.truncated));
+        })
+        .catch(() => {
+          if (!controller.signal.aborted) {
+            setSearchPaths([]);
+            setSearchTruncated(false);
+            setSearchFailed(true);
+          }
+        })
+        .finally(() => { if (!controller.signal.aborted) setSearchLoading(false); });
+    }, 150);
+    return () => { clearTimeout(timer); controller.abort(); };
+    // refreshToken participates so the toolbar refresh button and a finished
+    // upload re-run the visible query against a freshly built listing.
+  }, [cwd, fileSearchOpen, searchQuery, refreshToken]);
+
+  // Rows stay in the order the index ranked them, so the closest name matches
+  // sit at the top. Folding them into a directory tree would re-sort them
+  // alphabetically and push, say, AGENTS.md below every app/api/agent/… file
+  // that only matched on its parent directory.
+  const searchRows = useMemo(() => buildSearchRows(searchPaths).map((row) => ({
+    ...row,
+    node: {
+      name: row.name,
+      fullPath: joinFilePath(cwd, row.path),
+      isDir: false,
+      size: 0,
+      loaded: true,
+    } satisfies FileNode,
+  })), [cwd, searchPaths]);
 
   const gitStatusByPath = useMemo(() => new Map(
     gitFiles.map((status) => [normalizeFilePathSlashes(status.filePath), status]),
@@ -724,6 +867,84 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileE
   return (
     <div style={{ minHeight: "100%" }}>
       <input ref={uploadInputRef} type="file" multiple hidden onChange={handleUploadInput} />
+      {/* Pinned: the result list scrolls, so an un-sticky box leaves you
+          unable to edit the query that produced it. */}
+      {fileSearchOpen && (
+        <div style={{
+          position: "sticky",
+          top: 0,
+          zIndex: 1,
+          background: "var(--bg-panel)",
+          padding: "6px 8px 4px",
+        }}>
+          <input
+            ref={searchInputRef}
+            value={searchQuery}
+            onChange={(e) => {
+              // Arm the loading state in the same batch as the query: the
+              // debounce effect only runs after paint, so the first keystroke
+              // would otherwise show "No matching files" for a frame.
+              setSearchQuery(e.target.value);
+              setSearchLoading(true);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") {
+                e.preventDefault();
+                onFileSearchOpenChange?.(false);
+              }
+            }}
+            placeholder={t("fileExplorer.searchPlaceholder")}
+            aria-label={t("fileExplorer.searchFiles")}
+            style={{
+              width: "100%",
+              height: 27,
+              boxSizing: "border-box",
+              padding: searchQuery ? "0 26px 0 9px" : "0 9px",
+              background: "var(--bg)",
+              border: "1px solid var(--border)",
+              borderRadius: "var(--radius-control)",
+              outline: "none",
+              color: "var(--text)",
+              fontSize: 12,
+            }}
+            onFocus={(e) => { e.currentTarget.style.borderColor = "var(--accent)"; }}
+            onBlur={(e) => { e.currentTarget.style.borderColor = "var(--border)"; }}
+          />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => {
+                setSearchQuery("");
+                searchInputRef.current?.focus();
+              }}
+              title={t("fileExplorer.clearSearch")}
+              aria-label={t("fileExplorer.clearSearch")}
+              style={{
+                position: "absolute",
+                right: 12,
+                top: "50%",
+                transform: "translateY(calc(-50% + 1px))",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                width: 18,
+                height: 18,
+                padding: 0,
+                border: "none",
+                borderRadius: "var(--radius-control)",
+                background: "none",
+                color: "var(--text-dim)",
+                cursor: "pointer",
+                transition: `color var(--dur-fast) var(--ease-out-warm), background var(--dur-fast) var(--ease-out-warm)`,
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = "var(--bg-hover)"; e.currentTarget.style.color = "var(--text)"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = "none"; e.currentTarget.style.color = "var(--text-dim)"; }}
+            >
+              <X size={11} strokeWidth={2.4} aria-hidden="true" />
+            </button>
+          )}
+        </div>
+      )}
       {showUploadFeedback && (
         <div style={{ padding: "6px 8px", borderBottom: "1px solid var(--border)" }}>
         {uploadBusy && (
@@ -835,32 +1056,70 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileE
       )}
 
       <div role="tree" aria-label={t("sessionSidebar.explorer")} style={{ padding: "2px 4px" }}>
-        {loading ? (
-          <div style={{ padding: "8px 12px", fontSize: 11, color: "var(--text-dim)" }}>{t("fileExplorer.loadingFiles")}</div>
-        ) : error ? (
-          <div style={{ padding: "8px 12px", fontSize: 11, color: "var(--status-error)" }}>{error}</div>
+        {searchActive ? (
+          searchLoading ? (
+            <div role="status" style={{ padding: "8px 12px", fontSize: 11, color: "var(--text-dim)" }}>{t("fileExplorer.searching")}</div>
+          ) : searchFailed ? (
+            <div role="alert" style={{ padding: "8px 12px", fontSize: 11, color: "var(--status-error)" }}>{t("fileExplorer.searchFailed")}</div>
+          ) : searchRows.length === 0 ? (
+            <div style={{ padding: "8px 12px", fontSize: 11, color: "var(--text-dim)" }}>{t("fileExplorer.noMatchingFiles")}</div>
+          ) : (
+            <>
+              {searchRows.map((row) => (
+                <TreeNode
+                  key={row.path}
+                  node={row.node}
+                  depth={0}
+                  cwd={cwd}
+                  onOpenFile={onOpenFile}
+                  onAtMention={onAtMention}
+                  expandedPaths={EMPTY_PATH_SET}
+                  onToggleExpanded={noop}
+                  secondaryLabel={row.directory}
+                  highlightedPaths={highlightedPaths}
+                  gitStatusByPath={gitStatusByPath}
+                  changedDirectoryPaths={changedDirectoryPaths}
+                />
+              ))}
+              {searchTruncated && (
+                // Without this the list looks complete, and a broad query in a
+                // large repo silently hides everything past the cap.
+                <div style={{ padding: "6px 12px 8px", fontSize: 10, color: "var(--text-dim)" }}>
+                  {t("fileExplorer.searchTruncated", { count: searchRows.length })}
+                </div>
+              )}
+            </>
+          )
         ) : (
-          roots.map((node) => (
-            <TreeNode
-              key={node.fullPath}
-              node={node}
-              depth={0}
-              cwd={cwd}
-              onOpenFile={onOpenFile}
-              onAtMention={onAtMention}
-              expandedPaths={expandedPaths}
-              onToggleExpanded={handleToggleExpanded}
-              refreshToken={refreshToken}
-              highlightedPaths={highlightedPaths}
-              gitStatusByPath={gitStatusByPath}
-              changedDirectoryPaths={changedDirectoryPaths}
-            />
-          ))
-        )}
-        {!loading && !error && roots.length === 0 && (
-          <div style={{ padding: "8px 12px", fontSize: 11, color: "var(--text-dim)" }}>
-            {t("fileExplorer.noFilesFound")}
-          </div>
+          <>
+            {loading ? (
+              <div style={{ padding: "8px 12px", fontSize: 11, color: "var(--text-dim)" }}>{t("fileExplorer.loadingFiles")}</div>
+            ) : error ? (
+              <div style={{ padding: "8px 12px", fontSize: 11, color: "var(--status-error)" }}>{error}</div>
+            ) : (
+              roots.map((node) => (
+                <TreeNode
+                  key={node.fullPath}
+                  node={node}
+                  depth={0}
+                  cwd={cwd}
+                  onOpenFile={onOpenFile}
+                  onAtMention={onAtMention}
+                  expandedPaths={expandedPaths}
+                  onToggleExpanded={handleToggleExpanded}
+                  refreshToken={refreshToken}
+                  highlightedPaths={highlightedPaths}
+                  gitStatusByPath={gitStatusByPath}
+                  changedDirectoryPaths={changedDirectoryPaths}
+                />
+              ))
+            )}
+            {!loading && !error && roots.length === 0 && (
+              <div style={{ padding: "8px 12px", fontSize: 11, color: "var(--text-dim)" }}>
+                {t("fileExplorer.noFilesFound")}
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>
