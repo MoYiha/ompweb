@@ -977,7 +977,7 @@ export class AgentSessionWrapper {
           this.awaitingAgentStart = false;
           this.awaitingAgentStartDeadline = 0;
           notifyRunningChange();
-          if (error instanceof RpcCommandTimeoutError || (error instanceof Error && error.name === "RpcCommandTimeoutError")) {
+          if (error instanceof RpcCommandTimeoutError) {
             // The child took the frame but never acked it, so nothing will ever
             // report this run: recycle it exactly like the get_state timeout
             // path so the next request spawns a fresh child instead of talking
@@ -1019,7 +1019,7 @@ export class AgentSessionWrapper {
           const state = await this.proc.sendCommand<RpcSessionState>({ type: "get_state" }, GET_STATE_TIMEOUT_MS);
           return this.buildWebState(state);
         } catch (error) {
-          if (error instanceof RpcCommandTimeoutError || (error instanceof Error && error.name === "RpcCommandTimeoutError")) {
+          if (error instanceof RpcCommandTimeoutError) {
             await this.destroyAndWait();
             throw new WebRpcError("The OMP session stopped responding and was reset.", "session_unresponsive");
           }
