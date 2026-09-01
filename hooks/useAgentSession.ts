@@ -748,11 +748,15 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   // stays at the bottom (below the file entry) — it only fills the gap while
   // a brand-new session has no file data yet, and a failed new-session
   // set_model must not mask omp's actual resolved model.
-  const displayModel = isNew
-    ? (newSessionModel ?? newSessionDefaultModel)
-    : (currentModelOverride ?? (liveModelMeta
-        ? { provider: liveModelMeta.provider, modelId: liveModelMeta.modelId }
-        : data?.context.model ?? pendingModel));
+  const displayModel = useMemo(
+    () =>
+      isNew
+        ? (newSessionModel ?? newSessionDefaultModel)
+        : (currentModelOverride ?? (liveModelMeta
+            ? { provider: liveModelMeta.provider, modelId: liveModelMeta.modelId }
+            : data?.context.model ?? pendingModel)),
+    [isNew, newSessionModel, newSessionDefaultModel, currentModelOverride, liveModelMeta, data?.context.model, pendingModel],
+  );
 
   const sessionStats = useMemo(() => {
     if (sessionStatsOverride) return sessionStatsOverride;
@@ -1095,7 +1099,12 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         if (isInitialHydration) initialHydrationPendingRef.current = false;
       }
     } catch (e) {
-      setError(String(e));
+      // loadSession runs fire-and-forget as a background reconciler (file
+      // watcher, agent_end, bash, compaction) with showLoading=false. A
+      // transient failure there must not replace the chat with an error
+      // screen — only surface it when the user is actively waiting.
+      if (showLoading) setError(String(e));
+      else console.warn("Background loadSession failed:", e);
       if (showLoading && includeState) initialHydrationPendingRef.current = false;
       return null;
     } finally {
@@ -1105,7 +1114,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     }
   }, [refreshSubagentHistory, applyAuthoritativeModel, beginAuthoritativeModelSync]);
 
-  const loadContext = useCallback(async (sid: string, leafId: string | null, includePreCompaction = false) => {
+  const loadContext = useCallback(async (sid: string, leafId: string | null, includePreCompaction = false): Promise<boolean> => {
     const seq = ++contextRequestSeqRef.current;
     try {
       const params = new URLSearchParams({ deferThinking: "1", deferMedia: "1" });
@@ -1117,14 +1126,16 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       const d = await res.json() as { context: { messages: AgentMessage[]; entryIds: string[]; todoPhases: TodoPhase[] } };
       // Fence like loadSession: drop the response if the session changed or a
       // newer navigate started while this request was in flight.
-      if (sessionIdRef.current !== sid || contextRequestSeqRef.current !== seq) return;
+      if (sessionIdRef.current !== sid || contextRequestSeqRef.current !== seq) return false;
       setMessages(d.context.messages);
       setEntryIds(d.context.entryIds ?? []);
       setShowPreCompactionHistory(includePreCompaction);
       setTodoPhases(d.context.todoPhases ?? []);
     } catch (e) {
       console.error("Failed to load context:", e);
+      return false;
     }
+    return true;
   }, []);
 
   const togglePreCompactionHistory = useCallback(() => {
@@ -2548,7 +2559,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   }, []);
 
   const handleFork = useCallback(async (entryId: string) => {
-    if (bashRunningRef.current) return;
+    if (bashRunningRef.current || agentRunningRef.current) return;
     const sid = sessionIdRef.current;
     if (!sid) return;
     setForkingEntryId(entryId);
@@ -2569,18 +2580,18 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   }, [onSessionForked]);
 
   // omp's RPC protocol has no navigate-within-tree command, so branch
-  // selection is display-only: the viewed branch is loaded from the session
-  // file, while a live agent keeps prompting from its own current leaf.
-  const handleNavigate = useCallback(async (entryId: string) => {
+  const handleNavigate = useCallback(async (entryId: string): Promise<boolean> => {
     // While a run is active its streaming frames append to the displayed
     // message list — swapping in another branch's context mid-run would mix
     // the running turn into the wrong branch (same gating as MessageView's
     // sessionBusy-navigable check).
-    if (bashRunningRef.current || agentRunningRef.current) return;
+    if (bashRunningRef.current || agentRunningRef.current) return false;
     const sid = sessionIdRef.current;
-    if (!sid) return;
+    if (!sid) return false;
     setActiveLeafId(entryId);
-    await loadContext(sid, entryId);
+    const ok = await loadContext(sid, entryId);
+    if (!ok) return false;
+    return true;
   }, [loadContext]);
 
   const handleLeafChange = useCallback(async (leafId: string | null) => {

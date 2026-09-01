@@ -215,7 +215,7 @@ interface CommittedTranscriptProps {
   isNew: boolean;
   forkingEntryId: string | null;
   handleFork: (entryId: string) => void;
-  handleNavigate: (entryId: string) => void;
+  handleNavigate: (entryId: string) => boolean | Promise<boolean>;
   handleEditContent: (content: string) => void;
   modelNames: Record<string, string>;
   messageCwd: string | undefined;
@@ -475,13 +475,15 @@ export function ChatWindow({ session, newSessionCwd, toolCallsDefaultCollapsed =
   useEffect(() => { onModelCapacityChange?.(modelCapacityRef.current); }, [modelCapacityKey, onModelCapacityChange]);
   const providerUsageContext = useMemo<ProviderUsageContext | null>(
     () => displayModelValue ? { provider: displayModelValue.provider, modelId: displayModelValue.modelId } : null,
+    // Deps are the primitive identity of the model — a new wrapper object
+    // per streaming frame must not re-create the context.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [displayModelValue?.provider, displayModelValue?.modelId],
   );
   useEffect(() => {
     onProviderUsageContextChange?.(providerUsageContext);
     return () => onProviderUsageContextChange?.(null);
   }, [onProviderUsageContextChange, providerUsageContext]);
-  const hasCompaction = messages.some((message) => message.role === "custom" && (message as CustomMessage).customType === "compaction");
   const [generationSpeed, setGenerationSpeed] = useState<GenerationSpeedInfo | null>(null);
   const speedSamplesRef = useRef<number[]>([]);
   // Source of truth is omp's own get_state.tokensPerSecond (polled by the
@@ -595,6 +597,7 @@ export function ChatWindow({ session, newSessionCwd, toolCallsDefaultCollapsed =
   // anchored render window in CommittedTranscript.
   const [nearBottom, setNearBottom] = useState(true);
   useEffect(() => {
+    if (loading) return;
     const el = scrollContainerRef.current;
     if (!el) return;
     let raf: number | null = null;
@@ -612,7 +615,7 @@ export function ChatWindow({ session, newSessionCwd, toolCallsDefaultCollapsed =
       el.removeEventListener("scroll", onScroll);
       if (raf !== null) cancelAnimationFrame(raf);
     };
-  }, [scrollContainerRef]);
+  }, [loading, scrollContainerRef]);
   const sentinelRef = useRef<HTMLButtonElement>(null);
   const prevScrollDistanceRef = useRef<number | null>(null);
   // "auto" (observer fired while scrolling) anchors the viewport to the old
@@ -758,16 +761,17 @@ export function ChatWindow({ session, newSessionCwd, toolCallsDefaultCollapsed =
   const conversationMeta = useMemo(() => {
     const toolResultsMap = new Map<string, ToolResultMessage>();
     let lastAnchorIdx = -1;
+    let hasCompaction = false;
     const visibleRefIndexByMessage = new Map<number, number>();
     let refIdx = 0;
 
     messages.forEach((message, index) => {
       if (message.role === "toolResult") toolResultsMap.set((message as ToolResultMessage).toolCallId, message as ToolResultMessage);
+      if (message.role === "custom" && message.customType === "compaction") hasCompaction = true;
       if (isGroupAnchor(message)) lastAnchorIdx = index;
       if (message.role === "user" || message.role === "assistant") visibleRefIndexByMessage.set(index, refIdx++);
     });
-
-    return { toolResultsMap, lastAnchorIdx, visibleRefIndexByMessage };
+    return { toolResultsMap, lastAnchorIdx, hasCompaction, visibleRefIndexByMessage };
   }, [messages]);
   // The ref array is sized by the count of user/assistant messages — exactly
   // what conversationMeta's visibleRefIndexByMessage already tallies, so no
@@ -800,13 +804,18 @@ export function ChatWindow({ session, newSessionCwd, toolCallsDefaultCollapsed =
   const isEmptyNew = isNew && messages.length === 0 && !streamState.isStreaming && !sessionBusy;
   const messageCwd = session?.cwd ?? newSessionCwd ?? undefined;
 
-  const availableThinkingLevels = displayModelValue
-    ? resolveAvailableThinkingLevels(
-        modelThinkingLevels[`${displayModelValue.provider}:${displayModelValue.modelId}`],
-        displayModelValue,
-        liveModelMeta,
-      )
-    : null;
+  const displayModelKey = displayModelValue ? `${displayModelValue.provider}:${displayModelValue.modelId}` : "";
+  const availableThinkingLevels = useMemo(
+    () =>
+      displayModelValue
+        ? resolveAvailableThinkingLevels(
+            modelThinkingLevels[displayModelKey],
+            displayModelValue,
+            liveModelMeta,
+          )
+        : null,
+    [displayModelKey, displayModelValue, modelThinkingLevels, liveModelMeta],
+  );
 
   const currentThinkingLevelMap = displayModelValue
     ? (modelThinkingLevelMaps[`${displayModelValue.provider}:${displayModelValue.modelId}`] ?? null)
@@ -1026,7 +1035,7 @@ export function ChatWindow({ session, newSessionCwd, toolCallsDefaultCollapsed =
               <ExtensionStatusBar statuses={extensionStatuses} />
               <ExtensionWidgets widgets={aboveEditorWidgets} />
 
-            {hasCompaction && (
+            {conversationMeta.hasCompaction && (
               <div
                 style={{
                   display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12,
@@ -1073,8 +1082,8 @@ export function ChatWindow({ session, newSessionCwd, toolCallsDefaultCollapsed =
             />
             {streamState.isStreaming && streamState.streamingMessage && (
               <MessageView
+                key={streamState.streamingMessage.timestamp ?? "stream"}
                 message={streamState.streamingMessage as AgentMessage}
-                isStreaming
                 modelNames={modelNames}
                 cwd={messageCwd}
                 onOpenFile={onOpenFile}

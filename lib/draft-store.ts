@@ -16,7 +16,12 @@ export interface ChatDraft {
   files: ChatDraftFile[];
 }
 
-const drafts = new Map<string, ChatDraft>();
+// globalThis so dev Fast Refresh doesn't wipe drafts mid-typing.
+declare global {
+  var __ompChatDrafts: Map<string, ChatDraft> | undefined;
+}
+
+const drafts: Map<string, ChatDraft> = (globalThis.__ompChatDrafts ??= new Map());
 
 function cloneDraft(draft: ChatDraft): ChatDraft {
   return {

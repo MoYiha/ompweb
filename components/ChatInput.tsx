@@ -700,6 +700,12 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
     const previousDraftKey = draftKeyRef.current;
     if (previousDraftKey === draftKey) return;
 
+    // Invalidate any attachment reads still in flight for the old session so
+    // they cannot append onto the new session's composer, and drop any stale
+    // validation banner along with the old draft.
+    attachmentRevisionRef.current += 1;
+    setAttachError(null);
+
     if (previousDraftKey) {
       setDraft(previousDraftKey, {
         value: valueRef.current,
@@ -726,6 +732,13 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
     ta.style.height = "auto";
     if (value) ta.style.height = `${Math.min(ta.scrollHeight, 200)}px`;
   }, [value]);
+  useEffect(() => {
+    return () => {
+      // Drop any reads still in flight when the composer goes away entirely
+      // (they would otherwise touch state/URLs of a dead component).
+      attachmentRevisionRef.current += 1;
+    };
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -755,9 +768,12 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
     if (!attachedImages.length && !attachedTextFiles.length && msg.startsWith("/") && onBuiltinCommand) {
       const expansion = expandWebSlashCommand(msg);
       if (expansion.kind === "expand" && rejectsOversizedPrompt(expansion.prompt, attachedImages)) return;
+      const sentValue = value;
       const result = await onBuiltinCommand(msg);
       if (result.handled) {
-        if (!result.error && !result.retainInput) clearInput();
+        // The user may have started typing while the command ran; only clear
+        // if the composer still holds what was sent.
+        if (!result.error && !result.retainInput && valueRef.current === sentValue) clearInput();
         return;
       }
     }
@@ -922,8 +938,12 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
     if (fileIndexFetchingRef.current === cwd) return;
     fileIndexFetchingRef.current = cwd;
     const fetchCwd = cwd;
+    // Abort the previous fetch when the cwd changes or the menu closes, so a
+    // slow response for an old directory cannot flip the loading state after
+    // a newer one has taken over.
+    const controller = new AbortController();
     setFileIndexLoading(true);
-    fetch(`/api/file-index?cwd=${encodeURIComponent(fetchCwd)}`)
+    fetch(`/api/file-index?cwd=${encodeURIComponent(fetchCwd)}`, { signal: controller.signal })
       .then((res) => {
         if (!res.ok) throw new Error(`file index failed: ${res.status}`);
         return res.json() as Promise<{ files?: string[]; truncated?: boolean }>;
@@ -933,13 +953,17 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
         fileIndexMetaRef.current = { cwd: fetchCwd, fetchedAt: Date.now() };
       })
       .catch(() => {
-        // Leave any previous index in place; next open retries.
+        // Leave any previous index in place; next open retries. Aborts land
+        // here too, which is exactly the desired no-op.
         fileIndexMetaRef.current = null;
       })
       .finally(() => {
-        fileIndexFetchingRef.current = null;
-        setFileIndexLoading(false);
+        if (fileIndexFetchingRef.current === fetchCwd) {
+          fileIndexFetchingRef.current = null;
+          setFileIndexLoading(false);
+        }
       });
+    return () => controller.abort();
   }, [atTokenActive, cwd]);
 
   const applyAtCompletion = useCallback((entry: FileIndexEntry) => {

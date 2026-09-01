@@ -235,6 +235,10 @@ export class AgentSessionWrapper {
   private initPromise: Promise<void> | null = null;
   private restarting = false;
   private mcpListWaiter: { resolve: (text: string) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> } | null = null;
+  /** Synchronous mutex for getMcpList: checked+set before any await, so two
+   *  concurrent callers can never both enter (the waiter/promptRunning
+   *  bookkeeping alone is not an atomic gate). */
+  private mcpListInFlight = false;
   private _alive = true;
   /** Host tools the web UI registered via set_host_tools (agent-callable). */
   private hostToolNames: Set<string> = new Set();
@@ -720,7 +724,13 @@ export class AgentSessionWrapper {
     if (this.restarting) throw new WebRpcError(RESTARTING_MESSAGE, "session_restarting");
     if (!this.isAlive()) throw new Error("Session is no longer running");
     if (this.isRunning()) throw new WebRpcError("Wait for the current run to finish", "session_busy");
-    if (this.mcpListWaiter) throw new WebRpcError("MCP list is already loading", "mcp_list_loading");
+    if (this.mcpListWaiter || this.mcpListInFlight) throw new WebRpcError("MCP list is already loading", "mcp_list_loading");
+
+    // Dedicated synchronous mutex: promptRunning alone is not atomic — two
+    // concurrent callers could both pass the isRunning() check, and the second
+    // would steal the waiter so the first hangs to timeout (or receives the
+    // other's output). This flag is checked+set before any await.
+    this.mcpListInFlight = true;
 
     this.promptRunning = true;
     notifyRunningChange();
@@ -764,11 +774,11 @@ export class AgentSessionWrapper {
         clearTimeout(waiter.timer);
         this.mcpListWaiter = null;
       }
+      this.mcpListInFlight = false;
       this.promptRunning = false;
       notifyRunningChange();
     }
   }
-
   private buildWebState(state: RpcSessionState): WebSessionState {
     const wasRunning = this.isRunning();
 
@@ -1011,6 +1021,13 @@ export class AgentSessionWrapper {
           // agent_end will arrive to clear the flag; the streaming flag still
           // tracks a live turn that ends with its own agent_end.
           this.promptRunning = false;
+          // Clear the pending-start bookkeeping too: hasPendingWork would
+          // otherwise suppress stale-state reconciliation for the full
+          // AWAITING_AGENT_START_TIMEOUT_MS, leaving the UI showing "running"
+          // after an early abort.
+          this.awaitingAgentStart = false;
+          this.awaitingAgentStartDeadline = 0;
+          this.continuationGraceUntil = 0;
         });
         return null;
 

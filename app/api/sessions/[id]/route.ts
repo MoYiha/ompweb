@@ -21,9 +21,23 @@ import {
   buildSessionContext,
   readSessionHeader,
 } from "@/lib/session-reader";
-import { apiErrorResponse, resolveSessionPathOr404 } from "@/lib/api-utils";
+import { resolveSessionPathOr404 } from "@/lib/api-utils";
+import { parseJsonWithinLimit, RequestBodyTooLargeError } from "@/lib/bounded-form-data";
 import { sessionPathKey } from "@/lib/paths";
 import { getRpcSession } from "@/lib/rpc-manager";
+
+/** Stable, client-safe error body for catch-all handlers: details go to the
+ *  server log only, never to the browser. */
+function sessionsErrorResponse(error: unknown): NextResponse {
+  if (error instanceof RequestBodyTooLargeError) {
+    return NextResponse.json({ error: "Request body is too large", code: "request_too_large" }, { status: 413 });
+  }
+  if (error instanceof SyntaxError) {
+    return NextResponse.json({ error: "Invalid JSON request body", code: "invalid_json" }, { status: 400 });
+  }
+  console.error("[api/sessions]", error);
+  return NextResponse.json({ error: "Session request failed", code: "session_request_failed" }, { status: 500 });
+}
 
 // BranchNavigator still traverses recursively, so keep the response tree shallow.
 const MAX_PROJECTED_TREE_DEPTH = 200;
@@ -228,7 +242,7 @@ export async function GET(
       ...(agent ? { agent } : {}),
     });
   } catch (error) {
-    return apiErrorResponse(error);
+    return sessionsErrorResponse(error);
   }
 }
 
@@ -239,7 +253,7 @@ export async function PATCH(
 ) {
   const { id } = await params;
   try {
-    const { name } = await req.json() as { name?: string };
+    const { name } = await parseJsonWithinLimit<{ name?: string }>(req, 64 * 1024);
     if (typeof name !== "string" || !name.trim()) {
       return NextResponse.json({ error: "name is required", code: "session_name_required" }, { status: 400 });
     }
@@ -266,7 +280,7 @@ export async function PATCH(
     invalidateSessionListCache();
     return NextResponse.json({ ok: true });
   } catch (error) {
-    return apiErrorResponse(error);
+    return sessionsErrorResponse(error);
   }
 }
 
@@ -401,6 +415,6 @@ export async function DELETE(
       ...(skippedChildren.length > 0 ? { skippedChildren } : {}),
     });
   } catch (error) {
-    return apiErrorResponse(error);
+    return sessionsErrorResponse(error);
   }
 }

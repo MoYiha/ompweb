@@ -197,6 +197,14 @@ function sanitizeBranchForDir(branch: string): string {
 export async function addWorktree(cwd: string, branch: string): Promise<{ path: string; branch: string }> {
   const trimmed = branch.trim();
   if (!trimmed) throw new Error("Branch name is required");
+  // git-ref sanity: a bare positional like `--force` would be read as flags by
+  // `git worktree add -b`; whitespace, `..`, and leading/trailing dots are
+  // rejected by git's own ref rules (and `@{` is reflog syntax).
+  if (trimmed.startsWith("-")) throw new Error(`Invalid branch name: ${branch}`);
+  if (/[\s\x00-\x1f\x7f~^:?*[\]\\]/.test(trimmed)) throw new Error(`Invalid branch name: ${branch}`);
+  if (trimmed.includes("..") || trimmed.startsWith(".") || trimmed.endsWith(".") || trimmed.endsWith(".lock")) {
+    throw new Error(`Invalid branch name: ${branch}`);
+  }
 
   const dirName = sanitizeBranchForDir(trimmed);
   if (!dirName) throw new Error(`Invalid branch name: ${branch}`);
