@@ -9,6 +9,7 @@ import {
   loadSessionFile,
   MAX_SESSION_LOAD_BYTES,
   parseTitleSlotLine,
+  readSessionHeaderSync,
   setSessionTitle,
   writeSessionFileAtomicSync,
 } from "@/lib/omp/session-files";
@@ -361,33 +362,31 @@ export async function DELETE(
         } catch {
           continue; // vanished between readdir and stat — not a child we can fix
         }
-        // Parse phase: an unreadable or non-matching sibling is simply not a
-        // child of the deleted session, so it must not be reported as skipped.
-        let lines: string[];
-        let headerIndex: number;
-        let header: { type?: string; id?: string; parentSession?: string };
-        let linkedByPath: boolean;
-        try {
-          lines = readFileSync(childPath, "utf8").split("\n");
-          // v3 files carry a fixed-width title slot on line 1; the session
-          // header is then line 2. The slot line is left byte-identical.
-          headerIndex = parseTitleSlotLine(lines[0] ?? "") ? 1 : 0;
-          header = JSON.parse(lines[headerIndex]) as typeof header;
-          if (header.type !== "session" || !header.parentSession) continue;
-          linkedByPath = sessionPathKey(header.parentSession) === targetPathKey;
-          if (!linkedByPath && header.parentSession !== deletedSessionId) continue;
-        } catch {
-          continue;
-        }
+        const childHeader = readSessionHeaderSync(childPath);
+        if (!childHeader || !childHeader.parentSession) continue;
+        const linkedByPath = sessionPathKey(childHeader.parentSession) === targetPathKey;
+        if (!linkedByPath && childHeader.parentSession !== deletedSessionId) continue;
 
         // A live omp process owns its session file and flushes its whole
         // in-memory state on write — our rewrite would be clobbered by (or
         // interleaved with) its next flush.
-        const childId = typeof header.id === "string" ? header.id : undefined;
+        const childId = childHeader.id;
         if (childId && getRpcSession(childId)?.isAlive?.()) {
           skippedChildren.push({ id: childId, reason: "session_child_live" });
           continue;
         }
+
+        let lines: string[];
+        let headerIndex: number;
+        let header: { type?: string; id?: string; parentSession?: string };
+        try {
+          lines = readFileSync(childPath, "utf8").split("\n");
+          headerIndex = parseTitleSlotLine(lines[0] ?? "") ? 1 : 0;
+          header = JSON.parse(lines[headerIndex]) as typeof header;
+        } catch {
+          continue;
+        }
+
 
         // Write the replacement in the same form the child used.
         header.parentSession = linkedByPath

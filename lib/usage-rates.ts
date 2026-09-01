@@ -130,6 +130,12 @@ export function normalizeModelId(modelId: string): string {
   return clean;
 }
 
+const ratesCache = new Map<string, ModelRates | null>();
+
+export function clearRatesCache(): void {
+  ratesCache.clear();
+}
+
 /**
  * Resolve token pricing rates for a given provider and modelId.
  * Checks custom models.yml configuration first, then default rates catalog.
@@ -142,7 +148,24 @@ export function resolveModelRates(
   if (!modelId) return null;
   const normProvider = provider ? provider.trim().toLowerCase() : "";
   const normModel = normalizeModelId(modelId);
+  const cacheKey = customConfig
+    ? `${normProvider}::${normModel}::custom`
+    : `${normProvider}::${normModel}::default`;
+  const cached = ratesCache.get(cacheKey);
+  if (cached !== undefined) return cached;
 
+  const result = resolveModelRatesUncached(normProvider, normModel, modelId, customConfig);
+  if (ratesCache.size > 2000) ratesCache.clear();
+  ratesCache.set(cacheKey, result);
+  return result;
+}
+
+function resolveModelRatesUncached(
+  normProvider: string,
+  normModel: string,
+  modelId: string,
+  customConfig?: ModelsFileConfig | null,
+): ModelRates | null {
   // 1. Check custom models.yml config if provided
   if (customConfig?.providers) {
     // Exact provider match or any provider with matching model

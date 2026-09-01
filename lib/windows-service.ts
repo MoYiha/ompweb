@@ -238,9 +238,19 @@ export async function saveWebServiceConfig(updates: Partial<WebServiceConfig>): 
   return merged;
 }
 
+let trayRunningCache: { running: boolean; expiresAt: number } | null = null;
+const TRAY_RUNNING_TTL_MS = 3000;
+
+export function invalidateTrayRunningCache(): void {
+  trayRunningCache = null;
+}
+
 export async function isTrayProcessRunning(): Promise<boolean> {
   if (process.platform !== "win32") {
     return false;
+  }
+  if (trayRunningCache && trayRunningCache.expiresAt > Date.now()) {
+    return trayRunningCache.running;
   }
   try {
     const psExe = resolvePowerShellBin();
@@ -256,8 +266,11 @@ export async function isTrayProcessRunning(): Promise<boolean> {
       { timeout: 4000, env: getWindowsExecutionEnv(), windowsHide: true }
     );
     const count = parseInt(stdout.trim(), 10);
-    return !isNaN(count) && count > 0;
+    const isRunning = !isNaN(count) && count > 0;
+    trayRunningCache = { running: isRunning, expiresAt: Date.now() + TRAY_RUNNING_TTL_MS };
+    return isRunning;
   } catch {
+    trayRunningCache = { running: false, expiresAt: Date.now() + TRAY_RUNNING_TTL_MS };
     return false;
   }
 }
@@ -342,6 +355,7 @@ export async function installTrayShortcuts(
       env: getWindowsExecutionEnv(),
       windowsHide: true,
     });
+    invalidateTrayRunningCache();
     return { success: true, message: stdout || stderr };
   } catch (error: unknown) {
     const err = error as Error & { stdout?: string; stderr?: string };
@@ -382,6 +396,7 @@ export async function uninstallTrayShortcuts(
       env: getWindowsExecutionEnv(),
       windowsHide: true,
     });
+    invalidateTrayRunningCache();
     return { success: true, message: stdout || stderr };
   } catch (error: unknown) {
     const err = error as Error & { stdout?: string; stderr?: string };
@@ -477,6 +492,7 @@ export async function startTrayService(options: { openBrowser?: boolean } = {}):
       setTimeout(() => {
         if (!settled) {
           settled = true;
+          invalidateTrayRunningCache();
           resolve({ success: true });
         }
       }, 200);
@@ -505,6 +521,7 @@ export async function stopTrayService(): Promise<{ success: boolean; message?: s
       ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", psCommand],
       { timeout: 8000, env: getWindowsExecutionEnv(), windowsHide: true }
     );
+    invalidateTrayRunningCache();
     return { success: true };
   } catch (error: unknown) {
     const err = error as Error;

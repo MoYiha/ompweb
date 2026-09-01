@@ -716,8 +716,9 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   // revision bumps to one per animation frame so an open dialog only re-pages
   // once per frame instead of per event.
   const subagentVersionFlushRef = useRef<Set<string> | null>(null);
+  const subagentActivityFlushRef = useRef<Map<string, SubagentActivityEvent[]> | null>(null);
   const subagentVersionFlushFrameRef = useRef<number | null>(null);
-  // Delayed live-roster hydration after mount/reconnect; cancelled on unmount
+  const wasRunningForGaugeRef = useRef(false);
   // so a stale get_subagents cannot target a session that was switched away.
   const rosterRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const promptRunIdRef = useRef(0);
@@ -939,6 +940,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       subagentVersionFlushFrameRef.current = null;
     }
     subagentVersionFlushRef.current = null;
+    subagentActivityFlushRef.current = null;
     setSubagentEvents({});
     setSubagentTranscriptVersions({});
   }, []);
@@ -1827,6 +1829,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   // right around agent_end, possibly after the last in-run poll.
   useEffect(() => {
     if (!agentRunning) {
+      if (!wasRunningForGaugeRef.current) return;
+      wasRunningForGaugeRef.current = false;
       const sid = sessionIdRef.current;
       if (!sid) return;
       let cancelled = false;
@@ -1840,6 +1844,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         .catch(() => {});
       return () => { cancelled = true; };
     }
+    wasRunningForGaugeRef.current = true;
     const id = setInterval(() => {
       const sid = sessionIdRef.current;
       if (!sid) return;
@@ -2294,33 +2299,42 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         if (subagentId) {
           const pending = subagentVersionFlushRef.current ?? (subagentVersionFlushRef.current = new Set());
           pending.add(subagentId);
+          const activity = parseSubagentActivityEvent(payload);
+          if (activity) {
+            const actMap = subagentActivityFlushRef.current ?? (subagentActivityFlushRef.current = new Map());
+            const list = actMap.get(subagentId) ?? [];
+            list.push(activity);
+            actMap.set(subagentId, list);
+          }
           if (subagentVersionFlushFrameRef.current === null) {
             subagentVersionFlushFrameRef.current = requestAnimationFrame(() => {
               subagentVersionFlushFrameRef.current = null;
               const queued = subagentVersionFlushRef.current;
               subagentVersionFlushRef.current = null;
-              if (!queued || queued.size === 0) return;
-              setSubagentTranscriptVersions((prev) => {
-                let next = prev;
-                for (const id of queued) next = { ...next, [id]: (next[id] ?? 0) + 1 };
-                return pruneSubagentIdMap(next);
-              });
-            });
-          }
-          const activity = parseSubagentActivityEvent(payload);
-          if (activity) {
-            setSubagentEvents((prev) => {
-              const existing = prev[subagentId] ?? [];
-              const nextEvents = existing.length >= SUBAGENT_ACTIVITY_BUFFER_MAX
-                ? [...existing.slice(existing.length - SUBAGENT_ACTIVITY_BUFFER_MAX + 1), activity]
-                : [...existing, activity];
-              // Re-key first so pruning evicts the LEAST recently UPDATED ids
-              // (a plain spread keeps an existing key at its original position
-              // and can evict an actively-updated early id).
-              const next = { ...prev };
-              delete next[subagentId];
-              next[subagentId] = nextEvents;
-              return pruneSubagentIdMap(next);
+              const queuedActs = subagentActivityFlushRef.current;
+              subagentActivityFlushRef.current = null;
+              if (queued && queued.size > 0) {
+                setSubagentTranscriptVersions((prev) => {
+                  let next = prev;
+                  for (const id of queued) next = { ...next, [id]: (next[id] ?? 0) + 1 };
+                  return pruneSubagentIdMap(next);
+                });
+              }
+              if (queuedActs && queuedActs.size > 0) {
+                setSubagentEvents((prev) => {
+                  const next = { ...prev };
+                  for (const [id, acts] of queuedActs.entries()) {
+                    const existing = next[id] ?? [];
+                    const merged = [...existing, ...acts];
+                    const trimmed = merged.length > SUBAGENT_ACTIVITY_BUFFER_MAX
+                      ? merged.slice(merged.length - SUBAGENT_ACTIVITY_BUFFER_MAX)
+                      : merged;
+                    delete next[id];
+                    next[id] = trimmed;
+                  }
+                  return pruneSubagentIdMap(next);
+                });
+              }
             });
           }
         }
@@ -3164,6 +3178,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         subagentVersionFlushFrameRef.current = null;
       }
       subagentVersionFlushRef.current = null;
+      subagentActivityFlushRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refreshSubagentRoster, registerHostTools, registerHostUriSchemes]);

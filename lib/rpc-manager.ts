@@ -667,12 +667,17 @@ export class AgentSessionWrapper {
     };
     this.sessionFileSignalTimer = setTimeout(check, 250);
   }
-
-  private resetIdleTimer(): void {
+  private lastIdleReset = 0;
+  private resetIdleTimer(force = false): void {
+    const now = Date.now();
+    if (!force && this.idleTimer && now - this.lastIdleReset < 5000) {
+      return;
+    }
+    this.lastIdleReset = now;
     if (this.idleTimer) clearTimeout(this.idleTimer);
     this.idleTimer = setTimeout(() => {
       if (this.isRunning()) {
-        this.resetIdleTimer();
+        this.resetIdleTimer(true);
         return;
       }
       this.destroy();
@@ -1350,6 +1355,7 @@ let lastRunningSnapshot = "";
 export function notifyRunningChange({ refreshSessionList = false }: { refreshSessionList?: boolean } = {}): void {
   const runningSessions = getRunningRpcSessions();
   const ids = runningSessions.map((s) => s.id);
+  if (runningSessions.length === 0 && lastRunningSnapshot === "[]" && !refreshSessionList) return;
   const snapshot = JSON.stringify(runningSessions.slice().sort((a, b) => a.id.localeCompare(b.id)));
   if (snapshot === lastRunningSnapshot && !refreshSessionList) return;
   lastRunningSnapshot = snapshot;

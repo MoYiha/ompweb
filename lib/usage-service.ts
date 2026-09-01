@@ -24,6 +24,9 @@ interface SessionUsageCacheEntry {
 }
 
 export const MAX_USAGE_CACHE_ENTRIES = 2000;
+export const MAX_USAGE_CACHE_BYTES = 64 * 1024 * 1024; // 64 MiB
+
+let usageCacheApproxBytes = 0;
 
 declare global {
   var __ompUsageCache: Map<string, SessionUsageCacheEntry> | undefined;
@@ -36,12 +39,25 @@ function getUsageCache(): Map<string, SessionUsageCacheEntry> {
   return globalThis.__ompUsageCache;
 }
 
+function estimateUsageEntryBytes(entry: SessionUsageCacheEntry): number {
+  return entry.records.length * 200 + 128;
+}
+
 function setUsageCacheEntry(filePath: string, entry: SessionUsageCacheEntry): void {
   const cache = getUsageCache();
+  const existing = cache.get(filePath);
+  if (existing) {
+    usageCacheApproxBytes -= estimateUsageEntryBytes(existing);
+  }
+  const entryBytes = estimateUsageEntryBytes(entry);
   cache.set(filePath, entry);
-  while (cache.size > MAX_USAGE_CACHE_ENTRIES) {
+  usageCacheApproxBytes += entryBytes;
+
+  while (cache.size > MAX_USAGE_CACHE_ENTRIES || usageCacheApproxBytes > MAX_USAGE_CACHE_BYTES) {
     const oldestKey = cache.keys().next().value;
     if (!oldestKey) break;
+    const old = cache.get(oldestKey);
+    if (old) usageCacheApproxBytes -= estimateUsageEntryBytes(old);
     cache.delete(oldestKey);
   }
 }
@@ -49,6 +65,7 @@ function setUsageCacheEntry(filePath: string, entry: SessionUsageCacheEntry): vo
 /** Clear in-memory usage cache (useful on session mutation or manual refresh). */
 export function invalidateUsageCache(): void {
   globalThis.__ompUsageCache?.clear();
+  usageCacheApproxBytes = 0;
 }
 
 /**

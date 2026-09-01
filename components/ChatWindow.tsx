@@ -27,7 +27,7 @@ import {
   restoreScrollTop,
   VISIBLE_PAGE_SIZE,
 } from "@/lib/chat-lazy-load";
-import { getDraft } from "@/lib/draft-store";
+import { getDraftSummary } from "@/lib/draft-store";
 
 interface Props {
   session: SessionInfo | null;
@@ -1537,7 +1537,7 @@ function ExtensionCustomPanel({
 }
 
 /** Slim pill bar replacing the full composer when minimized. */
-function MinimizedComposerBar({ draftKey, isStreaming, isCompacting, expandRef, onExpand, onAbort, onAbortCompaction }: {
+const MinimizedComposerBar = memo(function MinimizedComposerBar({ draftKey, isStreaming, isCompacting, expandRef, onExpand, onAbort, onAbortCompaction }: {
   draftKey?: string;
   isStreaming: boolean;
   isCompacting?: boolean;
@@ -1548,11 +1548,10 @@ function MinimizedComposerBar({ draftKey, isStreaming, isCompacting, expandRef, 
 }) {
   const { t } = useI18n();
 
-  /* Read draft text for preview */
-  const draft = draftKey ? getDraft(draftKey) : null;
-  const draftText = draft?.value?.trim() || null;
-  const hasAttachments = (draft?.images?.length ?? 0) > 0 || (draft?.files?.length ?? 0) > 0;
-
+  /* Read draft summary for preview without cloning attachment payloads */
+  const summary = draftKey ? getDraftSummary(draftKey) : null;
+  const draftText = summary?.text?.trim() || null;
+  const hasAttachments = summary?.hasAttachments ?? false;
   return (
     <div style={{ flexShrink: 0, padding: "4px 16px calc(6px + env(safe-area-inset-bottom))" }}>
       <div style={{ maxWidth: CHAT_COLUMN_MAX_WIDTH, margin: "0 auto" }}>
@@ -1640,4 +1639,4 @@ function MinimizedComposerBar({ draftKey, isStreaming, isCompacting, expandRef, 
       </div>
     </div>
   );
-}
+});

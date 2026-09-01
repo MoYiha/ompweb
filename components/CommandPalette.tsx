@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Command } from "cmdk";
 import { Moon, Plus, Sun, MessageSquare } from "lucide-react";
@@ -24,7 +24,7 @@ function relativeTime(value: string, locale: string): string {
   return new Intl.RelativeTimeFormat(locale, { numeric: "always" }).format(-Math.floor(hours / 24), "day");
 }
 
-export function CommandPalette({ onSelectSession, onNewSession, currentModel }: Props) {
+export const CommandPalette = memo(function CommandPalette({ onSelectSession, onNewSession, currentModel }: Props) {
   const { t, locale } = useI18n();
   const { isDark, toggleTheme } = useTheme();
   const [open, setOpen] = useState(false);
@@ -106,8 +106,7 @@ export function CommandPalette({ onSelectSession, onNewSession, currentModel }: 
         </Command.List>
         <div style={{ borderTop: "1px solid var(--border)", padding: "8px 14px", color: "var(--text-dim)", fontSize: 11 }}>{t("commandPalette.hints")}</div>
       </Command>
-    </div>, document.body,
+    </div>,
+    document.body
   );
-}
-
-export default CommandPalette;
+});
