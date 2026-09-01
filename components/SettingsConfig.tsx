@@ -10,6 +10,8 @@ import { SettingsTabs, type SettingsTab, SETTINGS_CATEGORIES, getNormalizedActiv
 import { useI18n } from "@/lib/i18n";
 import { copyText } from "@/lib/clipboard";
 
+import { useFontSize, type FontSizePreference } from "@/hooks/useFontSize";
+import { useUiScale, type UiScalePreference } from "@/hooks/useUiScale";
 const SettingsTabLoading = () => {
   const { t } = useI18n();
   return <div role="status" style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-muted)", fontSize: 12 }}>{t("settingsConfig.loadingSettings")}</div>;
@@ -134,6 +136,8 @@ const SETTING_INDEX: SettingIndexEntry[] = [
   { id: "keep-tool-calls-collapsed", tab: "general", sectionKey: "settingsConfig.interfaceBehavior", labelKey: "settingsConfig.keepToolCallsCollapsed", descKey: "settingsConfig.keepToolCallsCollapsedDesc", fallbackSection: "Interface & Behavior", fallbackLabel: "Keep tool calls collapsed", fallbackDesc: "Show only compact headers while tools execute.", scope: "UI" },
   { id: "completion-sound", tab: "general", sectionKey: "settingsConfig.interfaceBehavior", labelKey: "settingsConfig.completionSound", descKey: "settingsConfig.completionSoundDesc", fallbackSection: "Interface & Behavior", fallbackLabel: "Completion sound", fallbackDesc: "Play a tone when the agent completes a run.", scope: "UI" },
   { id: "provider-usage", tab: "general", sectionKey: "settingsConfig.interfaceBehavior", labelKey: "settingsConfig.providerUsage", descKey: "settingsConfig.providerUsageDesc", fallbackSection: "Interface & Behavior", fallbackLabel: "Provider usage limits", fallbackDesc: "Show the current model's provider usage limits in the top bar.", scope: "UI" },
+  { id: "chat-font-size", tab: "general", sectionKey: "settingsConfig.interfaceBehavior", labelKey: "settingsConfig.chatFontSize", descKey: "settingsConfig.chatFontSizeDesc", fallbackSection: "Interface & Behavior", fallbackLabel: "Chat Font Size", fallbackDesc: "Adjust text size for conversation messages, code blocks, and markdown output.", scope: "UI" },
+  { id: "ui-scale", tab: "general", sectionKey: "settingsConfig.interfaceBehavior", labelKey: "settingsConfig.uiScale", descKey: "settingsConfig.uiScaleDesc", fallbackSection: "Interface & Behavior", fallbackLabel: "Interface Scale", fallbackDesc: "Adjust overall UI zoom and display density across sidebars, dialogs, buttons, and toolbars.", scope: "UI" },
   { id: "message-during-active-run", tab: "general", sectionKey: "settingsConfig.interfaceBehavior", labelKey: "settingsConfig.messageDuringActiveRun", descKey: "settingsConfig.messageDuringActiveRunDesc", fallbackSection: "Interface & Behavior", fallbackLabel: "Message during active run", fallbackDesc: "What composer does on submit while agent runs. Steer interrupts; Queue follow-up delivers after finish.", scope: "UI" },
   // Tool Safety & Approvals
   { id: "approval-mode", tab: "safety", sectionKey: "settingsConfig.toolSafetyApprovals", labelKey: "settingsConfig.approvalMode", descKey: "settingsConfig.approvalModeDesc", fallbackSection: "Tool Safety & Approvals", fallbackLabel: "Approval Mode", fallbackDesc: "Choose when OMP asks before tool calls.", scope: "Native OMP" },
@@ -372,6 +376,8 @@ export function SettingsConfig({ activeTab, toolCallsDefaultCollapsed, onToolCal
   const isMobile = useIsMobile();
   const { t } = useI18n();
   const workspaceReady = cwd !== null;
+  const { fontSize, setFontSize } = useFontSize();
+  const { uiScale, setUiScale } = useUiScale();
   const [searchQuery, setSearchQuery] = useState("");
   const [highlightId, setHighlightId] = useState<string | null>(null);
   const [submitBehavior, setSubmitBehavior] = useState<SubmitDuringRunBehavior>(() => getSubmitDuringRunBehavior());
@@ -688,6 +694,30 @@ export function SettingsConfig({ activeTab, toolCallsDefaultCollapsed, onToolCal
                   </NativeSetting>
                   <NativeSetting searchId="provider-usage" label={t("settingsConfig.providerUsage")} description={t("settingsConfig.providerUsageDesc")} scope="UI">
                     <ToggleSwitch checked={providerUsageVisible} onChange={onProviderUsageVisibleChange} />
+                  </NativeSetting>
+                  <NativeSetting searchId="chat-font-size" label={t("settingsConfig.chatFontSize")} description={t("settingsConfig.chatFontSizeDesc")} scope="UI">
+                    <select
+                      style={nativeSelectStyle}
+                      value={fontSize}
+                      onChange={(event) => setFontSize(event.target.value as FontSizePreference)}
+                    >
+                      <option value="sm" style={nativeOptionStyle}>{t("settingsConfig.fontSizeSmall")}</option>
+                      <option value="md" style={nativeOptionStyle}>{t("settingsConfig.fontSizeMedium")}</option>
+                      <option value="lg" style={nativeOptionStyle}>{t("settingsConfig.fontSizeLarge")}</option>
+                      <option value="xl" style={nativeOptionStyle}>{t("settingsConfig.fontSizeXLarge")}</option>
+                    </select>
+                  </NativeSetting>
+                  <NativeSetting searchId="ui-scale" label={t("settingsConfig.uiScale")} description={t("settingsConfig.uiScaleDesc")} scope="UI">
+                    <select
+                      style={nativeSelectStyle}
+                      value={uiScale}
+                      onChange={(event) => setUiScale(event.target.value as UiScalePreference)}
+                    >
+                      <option value="compact" style={nativeOptionStyle}>{t("settingsConfig.uiScaleCompact")}</option>
+                      <option value="standard" style={nativeOptionStyle}>{t("settingsConfig.uiScaleStandard")}</option>
+                      <option value="comfortable" style={nativeOptionStyle}>{t("settingsConfig.uiScaleComfortable")}</option>
+                      <option value="large" style={nativeOptionStyle}>{t("settingsConfig.uiScaleLarge")}</option>
+                    </select>
                   </NativeSetting>
                 </div>
                 <NativeSetting searchId="message-during-active-run" label={t("settingsConfig.messageDuringActiveRun")} description={t("settingsConfig.messageDuringActiveRunDesc")} scope="UI">

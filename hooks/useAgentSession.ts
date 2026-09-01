@@ -2183,7 +2183,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           setCompactResult(null);
         } else if (!event.aborted && !event.skipped) {
           setCompactResult(readCompactResult(event.result, "auto"));
-          if (sessionIdRef.current) loadSession(sessionIdRef.current);
+          if (sessionIdRef.current) void loadSession(sessionIdRef.current);
         }
         break;
       case "subagent_lifecycle": {
