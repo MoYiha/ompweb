@@ -191,7 +191,7 @@ export const MessageView = memo(function MessageView({ message, isStreaming, too
     && prev.prevTimestamp === next.prevTimestamp
     && prev.sessionId === next.sessionId
     && prev.toolCallsDefaultCollapsed === next.toolCallsDefaultCollapsed
-    && prev.liveTokensPerSecond === next.liveTokensPerSecond;
+    && (!prev.isStreaming || prev.liveTokensPerSecond === next.liveTokensPerSecond);
 });
 
 // lib/types.ts ImageContent uses the Anthropic-style {source:{type,data,media_type,url}}
@@ -256,8 +256,8 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
             borderRadius: "var(--radius-card)",
             boxShadow: "var(--shadow-card)",
             padding: "8px 12px",
-            fontSize: 14,
-            lineHeight: 1.6,
+            fontSize: "var(--chat-user-font-size, 14px)",
+            lineHeight: "var(--chat-line-height, 1.6)",
             color: "var(--text)",
             wordBreak: "break-word",
             maxHeight: USER_BUBBLE_MAX_HEIGHT,
@@ -448,15 +448,19 @@ function AssistantMessageView({
   // toolResult timestamp = when tool execution finished
   const toolCallDurations = useMemo<Map<string, number>>(() => {
     const map = new Map<string, number>();
-    if (!toolResults || !message.timestamp) return map;
-    for (const [callId, result] of toolResults) {
-      if (result.timestamp && message.timestamp) {
-        const secs = Math.round((result.timestamp - message.timestamp) / 1000);
-        if (secs > 0) map.set(callId, secs);
+    if (!toolResults || !message.timestamp || !Array.isArray(message.content)) return map;
+    for (const block of message.content) {
+      if (block.type === "toolCall") {
+        const tc = block as ToolCallContent;
+        const result = toolResults.get(tc.toolCallId);
+        if (result?.timestamp && message.timestamp) {
+          const secs = Math.round((result.timestamp - message.timestamp) / 1000);
+          if (secs > 0) map.set(tc.toolCallId, secs);
+        }
       }
     }
     return map;
-  }, [toolResults, message.timestamp]);
+  }, [toolResults, message.content, message.timestamp]);
   useEffect(() => {
     if (!isStreaming) {
       // Finalise any un-finished thinking block durations on stream end
