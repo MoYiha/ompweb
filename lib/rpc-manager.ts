@@ -1259,8 +1259,14 @@ export class AgentSessionWrapper {
 // ============================================================================
 // Session registry
 // ============================================================================
+export interface RunningRpcSession {
+  id: string;
+  cwd: string;
+}
+
 export interface RunningSessionUpdate {
   ids: string[];
+  runningSessions: RunningRpcSession[];
   refreshSessionList: boolean;
 }
 
@@ -1290,12 +1296,19 @@ export function getRpcSession(sessionId: string): AgentSessionWrapper | undefine
   return getRegistry().get(sessionId);
 }
 
-export function getRunningRpcSessionIds(): string[] {
-  const ids = new Set<string>();
+export function getRunningRpcSessions(): RunningRpcSession[] {
+  const map = new Map<string, string>();
   for (const [sessionId, session] of getRegistry()) {
-    if (session.isRunning()) ids.add(session.sessionId || sessionId);
+    if (session.isRunning()) {
+      const realId = session.sessionId || sessionId;
+      map.set(realId, session.cwd);
+    }
   }
-  return [...ids];
+  return [...map.entries()].map(([id, cwd]) => ({ id, cwd }));
+}
+
+export function getRunningRpcSessionIds(): string[] {
+  return getRunningRpcSessions().map((s) => s.id);
 }
 
 /** Stop all live omp children after an explicit runtime update. The browser will
@@ -1335,11 +1348,12 @@ let lastRunningSnapshot = "";
  * force one otherwise-identical update to refresh sidebar session metadata.
  */
 export function notifyRunningChange({ refreshSessionList = false }: { refreshSessionList?: boolean } = {}): void {
-  const ids = getRunningRpcSessionIds();
-  const snapshot = JSON.stringify([...ids].sort());
+  const runningSessions = getRunningRpcSessions();
+  const ids = runningSessions.map((s) => s.id);
+  const snapshot = JSON.stringify(runningSessions.slice().sort((a, b) => a.id.localeCompare(b.id)));
   if (snapshot === lastRunningSnapshot && !refreshSessionList) return;
   lastRunningSnapshot = snapshot;
-  const update = { ids, refreshSessionList };
+  const update: RunningSessionUpdate = { ids, runningSessions, refreshSessionList };
   for (const listener of getRunningListeners()) {
     try { listener(update); } catch { /* ignore listener errors */ }
   }

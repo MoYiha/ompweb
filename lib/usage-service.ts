@@ -8,7 +8,7 @@ import {
   calculateUsageCost,
   resolveModelRates,
 } from "./usage-rates";
-import { getUsageDatabase, getUsageReportFromDb } from "./usage-db";
+import { getUsageReportFromDb } from "./usage-db";
 import type {
   UsageQueryOptions,
   UsageRecord,

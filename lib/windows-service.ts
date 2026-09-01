@@ -44,7 +44,103 @@ export const DEFAULT_WEB_SERVICE_CONFIG: WebServiceConfig = {
 };
 
 export function getRepoRoot(): string {
-  return path.resolve(__dirname, "..");
+  if (process.env.OMP_WEB_PACKAGE_DIR && existsSync(process.env.OMP_WEB_PACKAGE_DIR)) {
+    return process.env.OMP_WEB_PACKAGE_DIR;
+  }
+  const fromDirname = path.resolve(__dirname, "..");
+  if (existsSync(path.join(fromDirname, "package.json"))) {
+    return fromDirname;
+  }
+  const fromCwd = process.cwd();
+  if (existsSync(path.join(fromCwd, "package.json"))) {
+    return fromCwd;
+  }
+  return fromDirname;
+}
+
+export function getSystemRoot(): string {
+  if (process.platform !== "win32") {
+    return "C:\\Windows";
+  }
+  return (
+    process.env.SystemRoot ||
+    process.env.systemroot ||
+    process.env.windir ||
+    process.env.WINDIR ||
+    "C:\\Windows"
+  );
+}
+
+export function resolvePowerShellBin(): string {
+  if (process.platform !== "win32") {
+    return "powershell";
+  }
+  const sysRoot = getSystemRoot();
+  const candidates = [
+    path.join(sysRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe"),
+    path.join(sysRoot, "SysWOW64", "WindowsPowerShell", "v1.0", "powershell.exe"),
+    ...(process.env.ProgramFiles ? [path.join(process.env.ProgramFiles, "PowerShell", "7", "pwsh.exe")] : []),
+    ...(process.env["ProgramFiles(x86)"] ? [path.join(process.env["ProgramFiles(x86)"], "PowerShell", "7", "pwsh.exe")] : []),
+  ];
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) {
+      return candidate;
+    }
+  }
+  return "powershell.exe";
+}
+
+export function resolveWscriptBin(): string {
+  if (process.platform !== "win32") {
+    return "wscript";
+  }
+  const sysRoot = getSystemRoot();
+  const candidates = [
+    path.join(sysRoot, "System32", "wscript.exe"),
+    path.join(sysRoot, "SysWOW64", "wscript.exe"),
+  ];
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) {
+      return candidate;
+    }
+  }
+  return "wscript.exe";
+}
+
+export function resolveTaskkillBin(): string {
+  if (process.platform !== "win32") {
+    return "taskkill";
+  }
+  const sysRoot = getSystemRoot();
+  const candidate = path.join(sysRoot, "System32", "taskkill.exe");
+  if (existsSync(candidate)) {
+    return candidate;
+  }
+  return "taskkill.exe";
+}
+
+export function getWindowsExecutionEnv(): NodeJS.ProcessEnv {
+  if (process.platform !== "win32") {
+    return process.env;
+  }
+  const sysRoot = getSystemRoot();
+  const system32 = path.join(sysRoot, "System32");
+  const psDir = path.join(system32, "WindowsPowerShell", "v1.0");
+  const wbem = path.join(system32, "Wbem");
+  const currentPath = process.env.PATH || process.env.Path || "";
+  const extraPaths = [system32, psDir, wbem, sysRoot].filter(
+    (p) => !currentPath.toLowerCase().includes(p.toLowerCase())
+  );
+  const mergedPath = extraPaths.length > 0
+    ? `${currentPath}${path.delimiter}${extraPaths.join(path.delimiter)}`
+    : currentPath;
+  return {
+    ...process.env,
+    SystemRoot: sysRoot,
+    windir: sysRoot,
+    PATH: mergedPath,
+    Path: mergedPath,
+  };
 }
 
 export function getWebServiceConfigPath(): string {
@@ -147,13 +243,18 @@ export async function isTrayProcessRunning(): Promise<boolean> {
     return false;
   }
   try {
-    const { stdout } = await execFileAsync("powershell.exe", [
-      "-NoProfile",
-      "-ExecutionPolicy",
-      "Bypass",
-      "-Command",
-      "$procs = Get-CimInstance Win32_Process -Filter \"Name LIKE '%powershell%' OR Name LIKE '%pwsh%'\" -ErrorAction SilentlyContinue | Where-Object { $_.ProcessId -ne $PID -and $_.CommandLine -like '*omp-web-tray.ps1*' }; ($procs | Measure-Object).Count",
-    ], { timeout: 4000 });
+    const psExe = resolvePowerShellBin();
+    const { stdout } = await execFileAsync(
+      psExe,
+      [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-Command",
+        '$procs = Get-CimInstance Win32_Process -Filter "Name LIKE \'%powershell%\' OR Name LIKE \'%pwsh%\'" -ErrorAction SilentlyContinue | Where-Object { $_.ProcessId -ne $PID -and $_.CommandLine -like \'*omp-web-tray.ps1*\' }; ($procs | Measure-Object).Count',
+      ],
+      { timeout: 4000, env: getWindowsExecutionEnv(), windowsHide: true }
+    );
     const count = parseInt(stdout.trim(), 10);
     return !isNaN(count) && count > 0;
   } catch {
@@ -234,9 +335,12 @@ export async function installTrayShortcuts(
   }
 
   try {
-    const { stdout, stderr } = await execFileAsync("powershell.exe", psArgs, {
+    const psExe = resolvePowerShellBin();
+    const { stdout, stderr } = await execFileAsync(psExe, psArgs, {
       cwd: repoRoot,
       timeout: 15000,
+      env: getWindowsExecutionEnv(),
+      windowsHide: true,
     });
     return { success: true, message: stdout || stderr };
   } catch (error: unknown) {
@@ -271,9 +375,12 @@ export async function uninstallTrayShortcuts(
   }
 
   try {
-    const { stdout, stderr } = await execFileAsync("powershell.exe", psArgs, {
+    const psExe = resolvePowerShellBin();
+    const { stdout, stderr } = await execFileAsync(psExe, psArgs, {
       cwd: repoRoot,
       timeout: 15000,
+      env: getWindowsExecutionEnv(),
+      windowsHide: true,
     });
     return { success: true, message: stdout || stderr };
   } catch (error: unknown) {
@@ -298,17 +405,23 @@ export async function toggleAutostart(enable: boolean): Promise<{ success: boole
 
   try {
     if (enable) {
+      const wscriptExe = resolveWscriptBin();
       const psCommand = `
         $wsh = New-Object -ComObject WScript.Shell
         $sc = $wsh.CreateShortcut('${startupLnk.replace(/'/g, "''")}')
-        $sc.TargetPath = 'wscript.exe'
+        $sc.TargetPath = '${wscriptExe.replace(/'/g, "''")}'
         $sc.Arguments = '"${launchVbs.replace(/"/g, '`"')}" -Startup'
         $sc.WorkingDirectory = '${repoRoot.replace(/'/g, "''")}'
         if (Test-Path '${icoPath.replace(/'/g, "''")}') { $sc.IconLocation = '${icoPath.replace(/'/g, "''")},0' }
         $sc.Description = 'omp-web Background Tray Service'
         $sc.Save()
       `;
-      await execFileAsync("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", psCommand], { timeout: 5000 });
+      const psExe = resolvePowerShellBin();
+      await execFileAsync(
+        psExe,
+        ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", psCommand],
+        { timeout: 5000, env: getWindowsExecutionEnv(), windowsHide: true }
+      );
     } else {
       if (existsSync(startupLnk)) {
         await fs.unlink(startupLnk);
@@ -329,23 +442,49 @@ export async function startTrayService(options: { openBrowser?: boolean } = {}):
   const repoRoot = getRepoRoot();
   const launchVbs = path.join(repoRoot, "scripts", "windows", "launch-tray.vbs");
 
+  if (!existsSync(launchVbs)) {
+    return { success: false, message: `Launch script not found at ${launchVbs}` };
+  }
+
+  const wscriptExe = resolveWscriptBin();
   const vbsArgs = [launchVbs];
   if (options.openBrowser) {
     vbsArgs.push("-OpenBrowser");
   }
 
-  try {
-    const child = spawn("wscript.exe", vbsArgs, {
-      cwd: repoRoot,
-      detached: true,
-      stdio: "ignore",
-    });
-    child.unref();
-    return { success: true };
-  } catch (error: unknown) {
-    const err = error as Error;
-    return { success: false, message: err.message };
-  }
+  return new Promise<{ success: boolean; message?: string }>((resolve) => {
+    try {
+      const child = spawn(wscriptExe, vbsArgs, {
+        cwd: repoRoot,
+        detached: true,
+        stdio: "ignore",
+        windowsHide: true,
+        env: getWindowsExecutionEnv(),
+      });
+
+      let settled = false;
+
+      child.on("error", (err) => {
+        if (!settled) {
+          settled = true;
+          resolve({ success: false, message: `Failed to launch tray process: ${err.message}` });
+        }
+      });
+
+      child.unref();
+
+      // Allow child spawn to tick to capture immediate spawn errors (ENOENT, etc.)
+      setTimeout(() => {
+        if (!settled) {
+          settled = true;
+          resolve({ success: true });
+        }
+      }, 200);
+    } catch (error: unknown) {
+      const err = error as Error;
+      resolve({ success: false, message: err.message });
+    }
+  });
 }
 
 export async function stopTrayService(): Promise<{ success: boolean; message?: string }> {
@@ -353,13 +492,19 @@ export async function stopTrayService(): Promise<{ success: boolean; message?: s
     return { success: false, message: "Only supported on Windows." };
   }
   try {
+    const taskkillExe = resolveTaskkillBin();
     const psCommand = `
       $trayProcs = Get-CimInstance Win32_Process -Filter "Name LIKE '%powershell%' OR Name LIKE '%pwsh%'" -ErrorAction SilentlyContinue | Where-Object { $_.ProcessId -ne $PID -and $_.CommandLine -like '*omp-web-tray.ps1*' }
       foreach ($p in $trayProcs) {
-          Start-Process -FilePath "taskkill.exe" -ArgumentList "/PID $($p.ProcessId) /T /F" -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue | Out-Null
+          Start-Process -FilePath '${taskkillExe.replace(/'/g, "''")}' -ArgumentList "/PID $($p.ProcessId) /T /F" -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue | Out-Null
       }
     `;
-    await execFileAsync("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", psCommand], { timeout: 8000 });
+    const psExe = resolvePowerShellBin();
+    await execFileAsync(
+      psExe,
+      ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", psCommand],
+      { timeout: 8000, env: getWindowsExecutionEnv(), windowsHide: true }
+    );
     return { success: true };
   } catch (error: unknown) {
     const err = error as Error;

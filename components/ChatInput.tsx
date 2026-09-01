@@ -412,7 +412,6 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
   );
   const [value, setValue] = useState(() => (draftKey ? getDraft(draftKey)?.value ?? "" : ""));
   const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
-  const [modelDropdownRect, setModelDropdownRect] = useState<{ top: number; left: number; width: number } | null>(null);
   const [thinkingDropdownOpen, setThinkingDropdownOpen] = useState(false);
   const [modelSearchQuery, setModelSearchQuery] = useState("");
   const [attachedImages, setAttachedImages] = useState<AttachedImage[]>(() => (
@@ -2336,11 +2335,7 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
             {(modelOptions.length > 0 || currentName || modelError || showModelsLoading) && onModelChange && (
               <div ref={dropdownRef} style={{ position: "relative", minWidth: 0 }}>
                 <button
-                  onClick={(e) => {
-                    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-                    setModelDropdownRect({ top: rect.top, left: rect.left, width: rect.width });
-                    setModelDropdownOpen((v) => !v);
-                  }}
+                  onClick={() => setModelDropdownOpen((v) => !v)}
                   disabled={modelSelectorDisabled}
                   style={{
                     display: "flex", alignItems: "center", gap: 5,
@@ -2385,24 +2380,24 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
                       ? t("chatInput.selectModel")
                       : showModelsLoading ? t("chatInput.loadingModels") : t("chatInput.noModels"))}
                   </span>
-                  <ChevronDown size={12} strokeWidth={1.8} style={{ flexShrink: 0, opacity: 0.7 }} aria-hidden="true" />
+                  <ChevronDown size={12} strokeWidth={1.8} style={{ flexShrink: 0, opacity: 0.7, transform: modelDropdownOpen ? "rotate(180deg)" : "none", transition: "transform var(--dur-fast) var(--ease-out-warm)" }} aria-hidden="true" />
                 </button>
-                {modelDropdownOpen && modelDropdownRect && (() => {
-                  const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
-                  const bottom = viewportHeight - modelDropdownRect.top + 6;
-                  const maxH = Math.max(120, Math.min(modelDropdownRect.top - 8, viewportHeight * 0.6));
-                  const panelPos: React.CSSProperties = isMobile
-                    ? { left: 8, right: 8, maxWidth: "calc(100vw - 16px)" }
-                    : { left: modelDropdownRect.left, width: "max-content", minWidth: modelDropdownRect.width, maxWidth: "calc(100vw - 16px)" };
-                  return (
-                    <div ref={modelDropdownPanelRef} className="picker-panel" style={{
-                      position: "fixed",
-                      bottom,
-                      ...panelPos,
+                {modelDropdownOpen && (
+                  <div
+                    ref={modelDropdownPanelRef}
+                    className="picker-panel"
+                    style={{
+                      position: isMobile ? "fixed" : "absolute",
+                      bottom: isMobile ? 8 : "calc(100% + 6px)",
+                      ...(isMobile
+                        ? { left: 8, right: 8, maxWidth: "calc(100vw - 16px)" }
+                        : { left: 0, width: "max-content", minWidth: 200, maxWidth: "min(320px, calc(100vw - 32px))" }),
                       zIndex: 500,
-                      display: "flex", flexDirection: "column",
-                      maxHeight: maxH,
-                    }}>
+                      display: "flex",
+                      flexDirection: "column",
+                      maxHeight: isMobile ? "calc(100dvh - 32px)" : "min(380px, 60vh)",
+                    }}
+                  >
                       <div className="picker-panel-header">
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ color: "var(--text-muted)" }}>
                           <rect x="4" y="4" width="16" height="16" rx="2" />
@@ -2458,8 +2453,7 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
                         ))}
                       </div>
                     </div>
-                  );
-                })()}
+                )}
               </div>
             )}
 

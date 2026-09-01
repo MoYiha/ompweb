@@ -5,6 +5,10 @@
 const { parseArgs } = require("util");
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { spawn } = require("child_process");
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const fs = require("fs");
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const path = require("path");
 
 function printHelp() {
   console.log(`Usage: node bin/omp-web-tray.js [command] [options]
@@ -167,8 +171,16 @@ async function runCli(argv = process.argv.slice(2)) {
   if (isOpen) {
     const status = await windowsService.getWebServiceStatus();
     console.log(`Opening web service at ${status.serviceUrl}...`);
-    const openCmd = process.platform === "win32" ? "explorer.exe" : process.platform === "darwin" ? "open" : "xdg-open";
+    let openCmd = "xdg-open";
+    if (process.platform === "win32") {
+      const sysRoot = process.env.SystemRoot || process.env.windir || "C:\\Windows";
+      const explorerPath = path.join(sysRoot, "explorer.exe");
+      openCmd = fs.existsSync(explorerPath) ? explorerPath : "explorer.exe";
+    }
     const child = spawn(openCmd, [status.serviceUrl], { stdio: "ignore", detached: true });
+    child.on("error", (err) => {
+      console.error(`Failed to open browser: ${err.message}`);
+    });
     child.unref();
     return { exitCode: 0 };
   }

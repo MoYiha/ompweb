@@ -154,13 +154,16 @@ Log-Message "  [OK] Configuration written to: $ConfigPath"
 # 3. Create Windows Shortcuts
 # -----------------------------------------------------------------------------
 $wsh = New-Object -ComObject WScript.Shell
-
+$wscriptExe = Join-Path $env:SystemRoot "System32\wscript.exe"
+if (!(Test-Path $wscriptExe)) {
+    $wscriptExe = "wscript.exe"
+}
 # Desktop Shortcut
 $desktopDir = [System.Environment]::GetFolderPath([System.Environment+SpecialFolder]::Desktop)
 $desktopLnk = Join-Path $desktopDir "omp-web.lnk"
 try {
     $sc = $wsh.CreateShortcut($desktopLnk)
-    $sc.TargetPath = "wscript.exe"
+    $sc.TargetPath = $wscriptExe
     $sc.Arguments = "`"$LaunchVbs`" -OpenBrowser"
     $sc.WorkingDirectory = $RepoRoot
     if (Test-Path $IcoPath) { $sc.IconLocation = "$IcoPath,0" }
@@ -176,7 +179,7 @@ $programsDir = [System.Environment]::GetFolderPath([System.Environment+SpecialFo
 $startMenuLnk = Join-Path $programsDir "omp-web.lnk"
 try {
     $sc = $wsh.CreateShortcut($startMenuLnk)
-    $sc.TargetPath = "wscript.exe"
+    $sc.TargetPath = $wscriptExe
     $sc.Arguments = "`"$LaunchVbs`" -OpenBrowser"
     $sc.WorkingDirectory = $RepoRoot
     if (Test-Path $IcoPath) { $sc.IconLocation = "$IcoPath,0" }
@@ -193,7 +196,7 @@ $startupLnk = Join-Path $startupDir "omp-web-tray.lnk"
 if (!$NoAutostart) {
     try {
         $sc = $wsh.CreateShortcut($startupLnk)
-        $sc.TargetPath = "wscript.exe"
+        $sc.TargetPath = $wscriptExe
         $sc.Arguments = "`"$LaunchVbs`" -Startup"
         $sc.WorkingDirectory = $RepoRoot
         if (Test-Path $IcoPath) { $sc.IconLocation = "$IcoPath,0" }
@@ -219,5 +222,5 @@ Log-Message "Tray Launcher   : $LaunchVbs"
 # -----------------------------------------------------------------------------
 if ($StartImmediately) {
     Log-Message "Starting background service and opening browser..."
-    $wsh.Run("wscript.exe `"$LaunchVbs`" -OpenBrowser", 0, $false)
+    $wsh.Run("`"$wscriptExe`" `"$LaunchVbs`" -OpenBrowser", 0, $false)
 }

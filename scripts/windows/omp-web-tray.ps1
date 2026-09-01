@@ -276,8 +276,10 @@ function Stop-WebServer {
         $pidToKill = $script:ChildProcess.Id
         Write-ServiceLog "Stopping child server process tree (PID $pidToKill)..."
         try {
+            $taskkillExe = Join-Path $env:SystemRoot "System32\taskkill.exe"
+            if (!(Test-Path $taskkillExe)) { $taskkillExe = "taskkill.exe" }
             # Use taskkill on Windows to terminate child tree cleanly
-            Start-Process -FilePath "taskkill.exe" -ArgumentList "/PID $pidToKill /T /F" -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue | Out-Null
+            Start-Process -FilePath $taskkillExe -ArgumentList "/PID $pidToKill /T /F" -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue | Out-Null
         } catch {
             try { $script:ChildProcess.Kill() } catch { }
         }
@@ -339,8 +341,10 @@ function Set-AutostartShortcut([bool]$enable) {
     if ($enable) {
         try {
             $wsh = New-Object -ComObject WScript.Shell
+            $wscriptExe = Join-Path $env:SystemRoot "System32\wscript.exe"
+            if (!(Test-Path $wscriptExe)) { $wscriptExe = "wscript.exe" }
             $shortcut = $wsh.CreateShortcut($startupLnk)
-            $shortcut.TargetPath = "wscript.exe"
+            $shortcut.TargetPath = $wscriptExe
             $shortcut.Arguments = "`"$launchVbs`" -Startup"
             $shortcut.WorkingDirectory = $RepoRoot
             if (Test-Path $IcoPath) {
