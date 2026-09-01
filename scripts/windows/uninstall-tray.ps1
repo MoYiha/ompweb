@@ -40,13 +40,21 @@ try {
 # -----------------------------------------------------------------------------
 # 2. Remove Windows Shortcuts
 # -----------------------------------------------------------------------------
-$desktopDir = [System.Environment]::GetFolderPath([System.Environment+SpecialFolder]::Desktop)
-$desktopLnk = Join-Path $desktopDir "omp-web.lnk"
-if (Test-Path $desktopLnk) {
-    Remove-Item -Path $desktopLnk -Force -ErrorAction SilentlyContinue
-    Log-Message "  [OK] Removed Desktop shortcut: $desktopLnk"
-}
+$desktopDirs = [System.Collections.Generic.List[string]]::new()
+$desktopDirs.Add([System.Environment]::GetFolderPath([System.Environment+SpecialFolder]::Desktop))
+$desktopDirs.Add((Join-Path $env:USERPROFILE "Desktop"))
+if ($env:OneDrive) { $desktopDirs.Add((Join-Path $env:OneDrive "Desktop")) }
+if ($env:OneDriveConsumer) { $desktopDirs.Add((Join-Path $env:OneDriveConsumer "Desktop")) }
+$desktopDirs.Add((Join-Path $env:USERPROFILE "OneDrive\Desktop"))
+$uniqueDesktopDirs = $desktopDirs | Where-Object { !([string]::IsNullOrEmpty($_)) } | Select-Object -Unique
 
+foreach ($dir in $uniqueDesktopDirs) {
+    $desktopLnk = Join-Path $dir "omp-web.lnk"
+    if (Test-Path $desktopLnk) {
+        Remove-Item -Path $desktopLnk -Force -ErrorAction SilentlyContinue
+        Log-Message "  [OK] Removed Desktop shortcut: $desktopLnk"
+    }
+}
 $programsDir = [System.Environment]::GetFolderPath([System.Environment+SpecialFolder]::Programs)
 $startMenuLnk = Join-Path $programsDir "omp-web.lnk"
 if (Test-Path $startMenuLnk) {

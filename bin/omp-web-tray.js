@@ -102,7 +102,6 @@ async function runCli(argv = process.argv.slice(2)) {
   const isOpen = cliArgs.open || positionals.includes("open");
 
   if (isInstall) {
-    console.log("Installing omp-web Windows System Tray & Background Service...");
     const installOpts = {};
     if (cliArgs.port) installOpts.port = parseInt(cliArgs.port, 10);
     if (cliArgs.hostname) installOpts.hostname = cliArgs.hostname;
@@ -119,9 +118,7 @@ async function runCli(argv = process.argv.slice(2)) {
       return { exitCode: 1, error: new Error(res.message) };
     }
   }
-
   if (isUninstall) {
-    console.log("Uninstalling omp-web Windows System Tray & Background Service...");
     const res = await windowsService.uninstallTrayShortcuts({ cleanConfig: cliArgs["clean-config"] });
     if (res.success) {
       console.log(res.message || "Uninstallation successful!");
