@@ -16,7 +16,7 @@ export const PRESET_FULL: string[] = ["bash", "read", "edit", "write", "grep", "
 
 const BUILTIN_TOOL_NAMES = new Set(PRESET_FULL);
 
-export function getPresetFromTools(tools: ToolEntry[]): ToolPreset {
+export function getPresetFromTools(tools: ToolEntry[]): ToolPreset | null {
   const activeTools = tools.filter((t) => t.active);
   if (activeTools.length === 0) return "none";
 
@@ -28,7 +28,10 @@ export function getPresetFromTools(tools: ToolEntry[]): ToolPreset {
 
   if (active === [...PRESET_DEFAULT].sort().join(",")) return "default";
   if (active === [...PRESET_FULL].sort().join(",")) return "full";
-  return "default";
+  // A custom selection (e.g. {read,bash,grep}) matches no builtin preset —
+  // reporting "default" would round-trip it to {read,bash,edit,write},
+  // silently enabling tools the user never chose.
+  return null;
 }
 
 export function getToolNamesForPreset(preset: ToolPreset): string[] | undefined {

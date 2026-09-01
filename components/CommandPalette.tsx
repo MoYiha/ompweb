@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Command } from "cmdk";
 import { Moon, Plus, Sun, MessageSquare } from "lucide-react";
@@ -30,15 +30,30 @@ export function CommandPalette({ onSelectSession, onNewSession, currentModel }: 
   const [open, setOpen] = useState(false);
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
   const [loading, setLoading] = useState(false);
+  const loadSeqRef = useRef(0);
+  const lastFocusedElementRef = useRef<HTMLElement | null>(null);
 
   const loadSessions = useCallback(() => {
+    // Sequence-guard: open→close→reopen within one RTT must not let response
+    // #1 clobber #2 or drop the spinner early.
+    const seq = ++loadSeqRef.current;
     setLoading(true);
     void fetch("/api/sessions")
-      .then((response) => response.ok ? response.json() as Promise<{ sessions: SessionInfo[] }> : Promise.reject(new Error("request failed")))
-      .then((data) => setSessions(data.sessions))
-       .catch(() => setSessions([]))
-       .finally(() => setLoading(false));
+      .then((response) => response.ok ? response.json() as Promise<{ sessions?: SessionInfo[] }> : Promise.reject(new Error("request failed")))
+      .then((data) => {
+        if (seq !== loadSeqRef.current) return;
+        setSessions(data.sessions ?? []);
+      })
+      .catch(() => {
+        if (seq !== loadSeqRef.current) return;
+        setSessions([]);
+      })
+      .finally(() => {
+        if (seq !== loadSeqRef.current) return;
+        setLoading(false);
+      });
   }, []);
+
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -53,6 +68,17 @@ export function CommandPalette({ onSelectSession, onNewSession, currentModel }: 
     };
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, [open]);
+
+  // Restore focus to the element that had it before the palette opened; the
+  // portal unmount would otherwise drop focus to <body>.
+  useEffect(() => {
+    if (open) {
+      lastFocusedElementRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    } else {
+      lastFocusedElementRef.current?.focus();
+      lastFocusedElementRef.current = null;
+    }
   }, [open]);
 
   useEffect(() => { if (open) loadSessions(); }, [open, loadSessions]);
