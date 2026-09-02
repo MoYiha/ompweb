@@ -294,22 +294,33 @@ function SidebarPortalMenu({
     const r = el.getBoundingClientRect();
     const width = menu.offsetWidth;
     const height = menu.offsetHeight;
+    // --ui-scale / zoom makes getBoundingClientRect() scaled while offsetWidth is unscaled.
+    // Convert the anchor rect to unscaled CSS pixels so the fixed menu (also zoomed) lands correctly.
+    let scale = 1;
+    if (typeof document !== "undefined") {
+      const raw = getComputedStyle(document.documentElement).getPropertyValue("--ui-scale");
+      const v = parseFloat(raw);
+      if (Number.isFinite(v) && v > 0) scale = v;
+    }
+    const ru = scale !== 1 ? { top: r.top / scale, right: r.right / scale, bottom: r.bottom / scale, left: r.left / scale } : r;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
     let top: number;
     if (placement === "above") {
-      top = r.top - height - MENU_MARGIN;
+      top = ru.top - height - MENU_MARGIN;
       if (top < MENU_VIEWPORT_PAD) {
-        top = Math.min(r.bottom + MENU_MARGIN, window.innerHeight - height - MENU_VIEWPORT_PAD);
+        top = Math.min(ru.bottom + MENU_MARGIN, vh - height - MENU_VIEWPORT_PAD);
       }
     } else {
-      top = r.bottom + MENU_MARGIN;
-      if (top + height > window.innerHeight - MENU_VIEWPORT_PAD) {
-        top = r.top - height - MENU_MARGIN;
+      top = ru.bottom + MENU_MARGIN;
+      if (top + height > vh - MENU_VIEWPORT_PAD) {
+        top = ru.top - height - MENU_MARGIN;
       }
     }
     if (top < MENU_VIEWPORT_PAD) top = MENU_VIEWPORT_PAD;
     const left = align === "start"
-      ? Math.max(MENU_VIEWPORT_PAD, Math.min(r.left, window.innerWidth - width - MENU_VIEWPORT_PAD))
-      : Math.max(MENU_VIEWPORT_PAD, Math.min(r.right - width, window.innerWidth - width - MENU_VIEWPORT_PAD));
+      ? Math.max(MENU_VIEWPORT_PAD, Math.min(ru.left, vw - width - MENU_VIEWPORT_PAD))
+      : Math.max(MENU_VIEWPORT_PAD, Math.min(ru.right - width, vw - width - MENU_VIEWPORT_PAD));
     setPos({ top, left });
   }, [placement, align]);
 
