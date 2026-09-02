@@ -1839,6 +1839,72 @@ html.dark .dropdown-surface :is(select, option) {
   }
 }
 
+/* Top bar center breadcrumb */
+.shell-topbar-breadcrumb {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: min(440px, 32vw);
+  height: 26px;
+  padding: 0 8px;
+  border-radius: var(--radius-control);
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--text-muted);
+  min-width: 0;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+/* Metric pills on topbar */
+.shell-metric-pill {
+  display: inline-flex;
+  align-items: center;
+  height: 26px;
+  padding: 0 8px;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--border);
+  background: var(--bg-subtle);
+  color: var(--text-muted);
+  font-size: 11px;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: background var(--dur-fast) var(--ease-out-warm),
+              border-color var(--dur-fast) var(--ease-out-warm),
+              color var(--dur-fast) var(--ease-out-warm);
+}
+
+.shell-metric-pill:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+  border-color: var(--border-strong, var(--border));
+}
+
+.shell-metric-pill[aria-pressed="true"] {
+  background: var(--bg-selected);
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+@media (max-width: 960px) {
+  .shell-topbar-center {
+    display: none !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .shell-metric-pill {
+    height: 32px;
+    padding: 0 6px;
+  }
+  .shell-metric-pill .shell-pill-extra {
+    display: none !important;
+  }
+}
+
 /* Collapsible "Process details" row: quiet when collapsed, subtle hover,
    small chevron that flips when expanded. */
 .process-details-toggle {
