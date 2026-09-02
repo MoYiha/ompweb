@@ -475,13 +475,8 @@ export function acknowledgeSelfUpdate(attemptId: string, kind: Kind = "app"): { 
     throw new SelfUpdateError("attempt_not_terminal", "The update attempt is not ready for cleanup", 409);
   }
   const lease = readStateJson<{ attemptId?: unknown; expiresAt?: unknown }>(leasePath(kind));
-  if (status.cleanupReady !== true || isProcessAlive(status.workerPid) || isProcessAlive(status.managerPid) || isActiveLease(lease) || (lease && (lease as { attemptId?: string }).attemptId !== attemptId)) {
-    // allow acknowledge if cleanupReady not set but terminal and lease expired — for trimmed version relax
-    if (!isActiveLease(lease) && !isProcessAlive(status.workerPid)) {
-      // proceed
-    } else {
-      throw new SelfUpdateError("cleanup_not_ready", "The update is still finishing cleanup", 409);
-    }
+  if (isProcessAlive(status.workerPid) || isProcessAlive(status.managerPid) || (lease && (lease as { attemptId?: string }).attemptId !== attemptId)) {
+    throw new SelfUpdateError("cleanup_not_ready", "The update is still finishing cleanup", 409);
   }
   // remove artifacts
   removeAttemptArtifacts(attemptId, kind);
