@@ -23,15 +23,39 @@ import { buildAtMentionText, buildFileAtMentionsText, buildFileLineMentionText }
 import { getInitialNavigation } from "@/lib/initial-navigation";
 import { comparableProjectPath } from "@/lib/comparable-path";
 import { showCompletionNotification } from "@/lib/browser-notifications";
-function projectLabel(projectPath: string): string {
-  const trimmed = projectPath.replace(/[\\/]+$/, "");
-  const index = Math.max(trimmed.lastIndexOf("/"), trimmed.lastIndexOf("\\"));
-  return index >= 0 ? trimmed.slice(index + 1) : trimmed;
-}
+import {
+  APP_UPDATE_COMPLETED_RELOAD_MS,
+  APP_UPDATE_POLL_MS,
+  APP_UPDATE_PREPARING_MIN_MS,
+  APP_UPDATE_STOPPING_POLL_MS,
+  APP_UPDATE_TIMEOUT_MS,
+  APP_UPDATE_VISIBLE_STAGE_MIN_MS,
+  AppUpdateTransportError,
+  COMPLETED_APP_UPDATE_KEY,
+  DISMISSED_APP_UPDATE_KEY,
+  fetchAppUpdateJson,
+  isExactLegacyTargetCompletion,
+  sanitizeAppUpdateError,
+  waitForAppUpdateDwell,
+} from "./AppShell-app-update";
+import {
+  PanelLoadingFallback,
+  SIDEBAR_DEFAULT_WIDTH,
+  SIDEBAR_WIDTH_STORAGE_KEY,
+  clampSidebarWidth,
+  loadSidebarWidth,
+  projectLabel,
+} from "./AppShell-layout";
+import {
+  formatProviderUsageReport,
+  formatUsageReset,
+  usageTone,
+  useProviderUsage,
+} from "./AppShell-provider-usage";
 import type { SessionInfo, SessionTreeNode } from "@/lib/types";
 import type { ChatInputHandle } from "./ChatInput";
 import type { SessionStatsInfo, GenerationSpeedInfo } from "@/lib/pi-types";
-import type { ProviderUsageContext, ProviderUsageReport, ProviderUsageSnapshot } from "@/lib/provider-usage-types";
+import type { ProviderUsageContext } from "@/lib/provider-usage-types";
 import type { SettingsTab } from "./SettingsTabs";
 import { SettingsConfig } from "./SettingsConfig";
 import {
@@ -51,110 +75,12 @@ const FileViewer = dynamic(() => import("./FileViewer").then((m) => m.FileViewer
   loading: () => <PanelLoadingFallback />,
 });
 
-// Resizable desktop sidebar: the width is stored on the container as the
-// --sidebar-width CSS variable (globals.css) and persisted between sessions.
-const SIDEBAR_WIDTH_STORAGE_KEY = "omp-web:sidebar-width";
 const TOOL_CALLS_COLLAPSED_STORAGE_KEY = "omp-web:tool-calls-collapsed";
 const PROVIDER_USAGE_VISIBLE_STORAGE_KEY = "omp-web:provider-usage-visible";
-const DISMISSED_APP_UPDATE_KEY = "omp-web:dismissed-app-update";
-const COMPLETED_APP_UPDATE_KEY = "omp-web:completed-app-update";
-const SIDEBAR_MIN_WIDTH = 200;
-const SIDEBAR_MAX_WIDTH = 520;
-const SIDEBAR_DEFAULT_WIDTH = 260;
-const APP_UPDATE_POLL_MS = 500;
-const APP_UPDATE_STOPPING_POLL_MS = 200;
-const APP_UPDATE_TIMEOUT_MS = 15 * 60 * 1_000;
-const APP_UPDATE_PREPARING_MIN_MS = 1_000;
-const APP_UPDATE_VISIBLE_STAGE_MIN_MS = 1_000;
-const APP_UPDATE_COMPLETED_RELOAD_MS = 3_000;
-const APP_UPDATE_ERROR_MAX_LENGTH = 240;
 
-async function waitForAppUpdateDwell(startedAt: number | null, minimumMs: number): Promise<void> {
-  if (startedAt == null) return;
-  const remainingMs = minimumMs - (Date.now() - startedAt);
-  if (remainingMs <= 0) return;
-  await new Promise<void>((resolve) => window.setTimeout(resolve, remainingMs));
-}
-
-function sanitizeAppUpdateError(error: unknown): string {
-  const raw = error instanceof Error ? error.message : typeof error === "string" ? error : "";
-  return raw
-    .replace(/[\u0000-\u001F\u007F]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, APP_UPDATE_ERROR_MAX_LENGTH);
-}
-
-function isExactLegacyTargetCompletion(update: AppUpdateInfo | null, targetVersion: string): boolean {
-  return update?.selfUpdateStatus == null && update?.currentVersion === targetVersion;
-}
-
-class AppUpdateTransportError extends Error {
-  constructor(cause: unknown) {
-    super(cause instanceof Error ? cause.message : "Update service connection failed");
-    this.name = "AppUpdateTransportError";
-  }
-}
-
-async function fetchAppUpdateJson<T>(input: string, init?: RequestInit, expectedStatus?: number): Promise<T> {
-  let response: Response;
-  let responseBody: string;
-  try {
-    response = await fetch(input, init);
-    responseBody = await response.text();
-  } catch (error) {
-    throw new AppUpdateTransportError(error);
-  }
-
-  let payload: unknown;
-  try {
-    payload = JSON.parse(responseBody);
-  } catch (error) {
-    const detail = error instanceof Error ? error.message : "Malformed JSON";
-    const prefix = response.ok ? "Invalid update response" : `HTTP ${response.status}: invalid update response`;
-    throw new Error(`${prefix}: ${detail}`);
-  }
-  if (payload === null || typeof payload !== "object" || Array.isArray(payload)) {
-    throw new Error(response.ok ? "Invalid update response" : `HTTP ${response.status}: invalid update response`);
-  }
-
-  const data = payload as T & { error?: unknown };
-  if (typeof data.error === "string" && data.error.trim()) throw new Error(data.error);
-  if (data.error != null) throw new Error("Invalid update error response");
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  if (expectedStatus !== undefined && response.status !== expectedStatus) {
-    throw new Error(`Expected HTTP ${expectedStatus}, received HTTP ${response.status}`);
-  }
-  return data;
-}
-
-function clampSidebarWidth(width: number): number {
-  return Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, Math.round(width)));
-}
-
-function loadSidebarWidth(): number {
-  if (typeof window === "undefined") return SIDEBAR_DEFAULT_WIDTH;
-  try {
-    const raw = window.localStorage.getItem(SIDEBAR_WIDTH_STORAGE_KEY);
-    const width = raw ? Number(raw) : NaN;
-    return Number.isFinite(width) ? clampSidebarWidth(width) : SIDEBAR_DEFAULT_WIDTH;
-  } catch {
-    return SIDEBAR_DEFAULT_WIDTH;
-  }
-}
 const CommandPalette = dynamic(() => import("./CommandPalette").then((m) => m.CommandPalette), {
   ssr: false,
 });
-
-function PanelLoadingFallback() {
-  const { t } = useI18n();
-  return (
-    <div role="status" style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-dim)", fontSize: 12 }}>
-      {t("appShell.loading")}
-    </div>
-  );
-}
-
 
 type SessionCopyField = "file" | "id";
 type AutoNameStatus =
@@ -163,85 +89,6 @@ type AutoNameStatus =
   | { kind: "success" }
   | { kind: "error"; message: string };
 type TimerHandle = NodeJS.Timeout;
-
-function formatUsageReset(value: number, unit: "minutes" | "hours"): string {
-  if (unit === "minutes") {
-    if (value < 60) return `${value}m`;
-    const hours = Math.floor(value / 60);
-    const minutes = value % 60;
-    return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
-  }
-  if (value < 24) return `${value}h`;
-  const days = Math.floor(value / 24);
-  const hours = value % 24;
-  return hours > 0 ? `${days}d ${hours}h` : `${days}d`;
-}
-
-function usageTone(percent: number): string {
-  if (percent >= 80) return "var(--status-error)";
-  if (percent >= 50) return "var(--status-warning)";
-  return "var(--text-muted)";
-}
-
-function formatProviderUsageReport(report: ProviderUsageReport, noLimitsLabel: string): string {
-  if (report.noLimits) return noLimitsLabel;
-  const parts: string[] = [];
-  if (report.tier) parts.push(report.tier);
-  if (report.fiveHour) {
-    const reset = report.fiveHour.resetMinutes === undefined
-      ? ""
-      : ` (${formatUsageReset(report.fiveHour.resetMinutes, "minutes")})`;
-    parts.push(`5h ${Math.round(report.fiveHour.percent)}%${reset}`);
-  }
-  if (report.sevenDay) {
-    const reset = report.sevenDay.resetHours === undefined
-      ? ""
-      : ` (${formatUsageReset(report.sevenDay.resetHours, "hours")})`;
-    parts.push(`7d ${Math.round(report.sevenDay.percent)}%${reset}`);
-  }
-  if (report.monthly) {
-    const reset = report.monthly.resetHours === undefined
-      ? ""
-      : ` (${formatUsageReset(report.monthly.resetHours, "hours")})`;
-    parts.push(`mo ${Math.floor(report.monthly.percent)}%${reset}`);
-  }
-  return parts.join(" · ");
-}
-type ProviderUsageState = {
-  snapshot: ProviderUsageSnapshot | null;
-  loading: boolean;
-  error: boolean;
-};
-
-function useProviderUsage(query: string | null, refreshMs?: number): ProviderUsageState {
-  const [state, setState] = useState<ProviderUsageState>({ snapshot: null, loading: false, error: false });
-  useEffect(() => {
-    if (query === null) {
-      setState({ snapshot: null, loading: false, error: false });
-      return;
-    }
-    const controller = new AbortController();
-    setState({ snapshot: null, loading: true, error: false });
-    const load = async () => {
-      try {
-        const response = await fetch(`/api/provider-usage${query ? `?${query}` : ""}`, { signal: controller.signal });
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const snapshot = await response.json() as ProviderUsageSnapshot;
-        if (!controller.signal.aborted) setState({ snapshot, loading: false, error: false });
-      } catch {
-        if (!controller.signal.aborted) setState({ snapshot: null, loading: false, error: true });
-      }
-    };
-    void load();
-    const interval = refreshMs ? window.setInterval(() => void load(), refreshMs) : undefined;
-    return () => {
-      controller.abort();
-      if (interval !== undefined) window.clearInterval(interval);
-    };
-  }, [query, refreshMs]);
-  return state;
-}
-
 
 export function AppShell() {
   const router = useRouter();

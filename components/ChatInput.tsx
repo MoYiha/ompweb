@@ -1,26 +1,50 @@
 "use client";
 
 import React, { useRef, useState, useCallback, useEffect, useImperativeHandle, forwardRef, memo, KeyboardEvent } from "react";
-import { ChevronDown, ListChecks, Search, Shrink, Sparkles, Target, Wrench, Zap } from "lucide-react";
+import { ChevronDown, ListChecks, Search, Shrink, Sparkles, Wrench, Zap } from "lucide-react";
 import { getSubmitDuringRunBehavior } from "@/lib/composer-prefs";
 import type { BuiltinSlashCommandResult, CompactResultInfo, QueuedMessages, SlashCommandInfo } from "@/hooks/useAgentSession";
 import type { ActiveGoal, ActivePlan } from "@/lib/web-mode-state";
-import { formatGoalElapsed } from "@/lib/web-mode-state";
 import { toast } from "@/components/ui/toast";
-import { formatCompactNumber } from "@/lib/format";
-import { clearDraft, getDraft, setDraft, type ChatDraftFile, type ChatDraftImage } from "@/lib/draft-store";
-import { WEB_SLASH_COMMANDS, expandWebSlashCommand } from "@/lib/web-slash-commands";
+import { clearDraft, getDraft, setDraft } from "@/lib/draft-store";
+import { expandWebSlashCommand } from "@/lib/web-slash-commands";
+import type { AttachedImage, AttachedTextFile } from "./ChatInput-draft-attachments";
+import {
+  draftFilesToAttachedFiles,
+  draftImagesToAttachedImages,
+  imageToDraftImage,
+  revokeImagePreview,
+  textFileToDraftFile,
+} from "./ChatInput-draft-attachments";
+import {
+  BUILTIN_SLASH_COMMAND_DEFS,
+  CLIENT_BUILTIN_COMMAND_NAMES,
+  SLASH_SOURCE_GROUP_LABEL_KEYS,
+  SLASH_SOURCE_ORDER,
+  SLASH_SOURCES,
+  isDormantSkillCommand,
+  slashMatchRank,
+  type SlashCommandPaletteItem,
+  type SlashCommandSource,
+} from "./ChatInput-slash-commands";
+import {
+  COMPOSER_MODELS_STORAGE_KEY,
+  compareModelOptions,
+  filterModelOptions,
+  formatTokenCount,
+  readVisibleModelKeys,
+  type ModelOption,
+} from "./ChatInput-model-options";
+import { ComposerModeStatus, ModelErrorBanner, QueuedActionButton } from "./ChatInput-banners";
 import { CHAT_COLUMN_MAX_WIDTH } from "@/lib/chat-layout";
 import {
   composeMessageWithTextAttachments,
   MAX_ATTACHED_TEXT_BYTES,
   MAX_ATTACHED_TEXT_FILES,
-  type AttachedTextFileData,
 } from "@/lib/chat-attachments";
 import {
   MAX_ATTACHED_IMAGE_BYTES,
   MAX_ATTACHED_IMAGES,
-  isBase64ImageWithinLimits,
   validateOutgoingPrompt,
 } from "@/lib/image-attachments";
 import {
@@ -33,19 +57,9 @@ import { useI18n } from "@/lib/i18n";
 import { selectableThinkingLevels } from "@/lib/thinking-levels";
 import type { ToolPreset } from "@/lib/tool-presets";
 
-export interface AttachedImage {
-  data: string;   // base64, no prefix
-  mimeType: string;
-  previewUrl: string; // object URL for display
-}
-
-export type AttachedTextFile = AttachedTextFileData;
-
-interface ModelOption {
-  provider: string;
-  modelId: string;
-  name: string;
-};
+export type { AttachedImage, AttachedTextFile } from "./ChatInput-draft-attachments";
+export { filterModelOptions } from "./ChatInput-model-options";
+export { ModelErrorBanner } from "./ChatInput-banners";
 
 const TOOL_PRESET_OPTIONS: Array<{ value: ToolPreset; descriptionKey: string }> = [
   { value: "none", descriptionKey: "chatInput.toolPresetNone" },
@@ -125,274 +139,6 @@ export interface ChatInputHandle {
 }
 
 const COMPOSITION_END_ENTER_GRACE_MS = 100;
-const COMPOSER_MODELS_STORAGE_KEY = "omp-composer-models";
-
-function readVisibleModelKeys(): Set<string> | null {
-  try {
-    const value = JSON.parse(localStorage.getItem(COMPOSER_MODELS_STORAGE_KEY) ?? "null");
-    return Array.isArray(value) ? new Set(value.filter((item): item is string => typeof item === "string")) : null;
-  } catch {
-    return null;
-  }
-}
-
-function compareModelOptions(collator: Intl.Collator, a: ModelOption, b: ModelOption): number {
-  return collator.compare(a.name || a.modelId, b.name || b.modelId)
-    || collator.compare(a.provider, b.provider)
-    || collator.compare(a.modelId, b.modelId);
-}
-
-export function filterModelOptions(options: ModelOption[], query: string, locale: string): ModelOption[] {
-  const normalizedQuery = query.trim().toLocaleLowerCase(locale);
-  if (!normalizedQuery) return options;
-  return options.filter((option) => (
-    option.name.toLocaleLowerCase(locale).includes(normalizedQuery)
-    || option.modelId.toLocaleLowerCase(locale).includes(normalizedQuery)
-    || option.provider.toLocaleLowerCase(locale).includes(normalizedQuery)
-  ));
-}
-
-
-function formatTokenCount(tokens: number, locale: string): string {
-  return formatCompactNumber(tokens, locale);
-}
-
-type SlashCommandSource = "builtin" | "extension" | "prompt" | "skill" | "ompBuiltin";
-
-type SlashCommandPaletteItem = {
-  name: string;
-  description?: string;
-  /** Bracketed argument hint rendered after the command name, e.g. "[goal]". */
-  argumentHint?: string;
-  source: SlashCommandSource;
-};
-
-function isDormantSkillCommand(command: SlashCommandPaletteItem, dormantNames: Set<string>): boolean {
-  return command.source === "skill" && dormantNames.has(command.name);
-}
-
-const BUILTIN_SLASH_COMMAND_DEFS: { name: string; descriptionKey: string; argumentHintKey?: string }[] = [
-  // Web-native prompt-composing commands (goal/plan/... are TUI-only in omp and
-  // never execute over the RPC prompt path — see lib/web-slash-commands.ts).
-  ...WEB_SLASH_COMMANDS.map((command) => ({
-    name: command.name,
-    descriptionKey: command.descriptionKey,
-    argumentHintKey: command.argumentHintKey,
-  })),
-  { name: "compact", descriptionKey: "chatInput.cmdCompact" },
-  { name: "reload", descriptionKey: "chatInput.cmdReload" },
-  { name: "name", descriptionKey: "chatInput.cmdName" },
-  { name: "session", descriptionKey: "chatInput.cmdSession" },
-  { name: "copy", descriptionKey: "chatInput.cmdCopy" },
-];
-
-const CLIENT_BUILTIN_COMMAND_NAMES = new Set(BUILTIN_SLASH_COMMAND_DEFS.map((def) => def.name));
-
-const SLASH_SOURCES: SlashCommandSource[] = ["builtin", "extension", "prompt", "skill", "ompBuiltin"];
-
-const SLASH_SOURCE_GROUP_LABEL_KEYS: Record<SlashCommandSource, string> = {
-  builtin: "chatInput.groupBuiltin",
-  extension: "chatInput.groupExtensions",
-  prompt: "chatInput.groupPrompts",
-  skill: "chatInput.groupSkills",
-  ompBuiltin: "chatInput.groupOmpBuiltin",
-};
-
-const SLASH_SOURCE_ORDER: Record<SlashCommandSource, number> = {
-  builtin: 0,
-  extension: 1,
-  prompt: 2,
-  skill: 3,
-  ompBuiltin: 4,
-};
-
-function slashMatchRank(command: SlashCommandPaletteItem, query: string): number {
-  const name = command.name.toLowerCase();
-  const description = command.description?.toLowerCase() ?? "";
-  if (name === query) return 0;
-  if (name.startsWith(query)) return 1;
-  if (name.includes(query)) return 2;
-  if (description.includes(query)) return 3;
-  return 4;
-}
-
-function imageToDraftImage(image: AttachedImage): ChatDraftImage {
-  return { data: image.data, mimeType: image.mimeType };
-}
-
-function draftImageToAttachedImage(image: ChatDraftImage): AttachedImage {
-  return {
-    ...image,
-    previewUrl: `data:${image.mimeType};base64,${image.data}`,
-  };
-}
-
-function draftImagesToAttachedImages(images: ChatDraftImage[] | undefined): AttachedImage[] {
-  return (images ?? [])
-    .filter(isBase64ImageWithinLimits)
-    .slice(0, MAX_ATTACHED_IMAGES)
-    .map(draftImageToAttachedImage);
-}
-function textFileToDraftFile(file: AttachedTextFile): ChatDraftFile {
-  return { name: file.name, mimeType: file.mimeType, content: file.content, size: file.size };
-}
-
-function draftFilesToAttachedFiles(files: ChatDraftFile[] | undefined): AttachedTextFile[] {
-  return (files ?? [])
-    .filter((file) => typeof file.name === "string"
-      && typeof file.mimeType === "string"
-      && typeof file.content === "string"
-      && Number.isFinite(file.size)
-      && file.size <= MAX_ATTACHED_TEXT_BYTES)
-    .slice(0, MAX_ATTACHED_TEXT_FILES);
-}
-
-function revokeImagePreview(image: AttachedImage): void {
-  if (image.previewUrl.startsWith("blob:")) {
-    URL.revokeObjectURL(image.previewUrl);
-  }
-}
-
-/** Compact action button for the queued follow-up bar. */
-function QueuedActionButton({
-  onClick,
-  title,
-  accent = false,
-  children,
-}: {
-  onClick: () => void;
-  title: string;
-  accent?: boolean;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      title={title}
-      style={{
-        flexShrink: 0,
-        padding: "4px 8px", minHeight: 24,
-        border: "none",
-        borderRadius: 6,
-        background: "transparent",
-        color: accent ? "var(--accent)" : "var(--text-dim)",
-        cursor: "pointer",
-        fontSize: 11,
-        fontWeight: accent ? 600 : 400,
-        transition: "background var(--dur-fast) var(--ease-out-warm), color var(--dur-fast) var(--ease-out-warm)",
-      }}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.background = "var(--bg-hover)";
-        if (!accent) e.currentTarget.style.color = "var(--text-muted)";
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.background = "transparent";
-        if (!accent) e.currentTarget.style.color = "var(--text-dim)";
-      }}
-    >
-      {children}
-    </button>
-  );
-}
-
-export function ModelErrorBanner({ error }: { error?: string | null }) {
-  const { t } = useI18n();
-  if (!error) return null;
-  return (
-    <div
-      role="alert"
-      style={{
-        display: "flex",
-        alignItems: "flex-start",
-        gap: 8,
-        maxHeight: 120,
-        marginBottom: 8,
-        padding: "7px 10px",
-        overflowY: "auto",
-        border: "1px solid color-mix(in srgb, var(--status-error) 35%, transparent)",
-        borderRadius: "var(--radius-control)",
-        background: "color-mix(in srgb, var(--status-error) 8%, transparent)",
-        color: "var(--status-error)",
-        fontSize: 11,
-        lineHeight: 1.45,
-      }}
-    >
-      <svg
-        width="13"
-        height="13"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        style={{ flexShrink: 0, marginTop: 1 }}
-        aria-hidden="true"
-      >
-        <path d="M10.3 2.9 1.8 17a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 2.9a2 2 0 0 0-3.4 0Z" />
-        <line x1="12" y1="9" x2="12" y2="13" />
-        <line x1="12" y1="17" x2="12.01" y2="17" />
-      </svg>
-      <div style={{ minWidth: 0 }}>
-        <div style={{ fontWeight: 600 }}>{t("chatInput.modelError")}</div>
-        <div style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{error}</div>
-      </div>
-    </div>
-  );
-}
-
-function ComposerModeStatus({ goal, plan }: { goal?: ActiveGoal | null; plan?: ActivePlan | null }) {
-  const { t } = useI18n();
-  const [expanded, setExpanded] = useState(false);
-  const [now, setNow] = useState(() => Date.now());
-
-  useEffect(() => {
-    if (!goal) return;
-    setExpanded(false);
-    setNow(Date.now());
-    const timer = window.setInterval(() => setNow(Date.now()), 30_000);
-    return () => window.clearInterval(timer);
-  }, [goal]);
-
-  if (!goal && !plan) return null;
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 8 }}>
-      {goal && (
-        <button
-          type="button"
-          aria-expanded={expanded}
-          onClick={() => setExpanded((value) => !value)}
-          title={expanded ? t("chatInput.collapseGoal") : t("chatInput.expandGoal")}
-          style={{
-            display: "flex", alignItems: expanded ? "flex-start" : "center", gap: 8,
-            width: "100%", padding: "6px 9px",
-            border: "1px solid color-mix(in srgb, var(--accent) 32%, var(--border))",
-            borderRadius: "var(--radius-control)",
-            background: "color-mix(in srgb, var(--accent) 7%, var(--bg-panel))",
-            color: "var(--text)", cursor: "pointer", textAlign: "left",
-            transition: "background var(--dur-fast) var(--ease-out-warm), border-color var(--dur-fast) var(--ease-out-warm)",
-          }}
-        >
-          <Target size={14} strokeWidth={2} style={{ flexShrink: 0, marginTop: expanded ? 1 : 0, color: "var(--accent)" }} aria-hidden="true" />
-          <span style={{ flexShrink: 0, color: "var(--text-dim)", fontSize: 10, fontFamily: "var(--font-mono)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
-            {t("chatInput.goalActive")} · {formatGoalElapsed(now - goal.startedAt)}
-          </span>
-          <span style={{ minWidth: 0, flex: 1, overflow: expanded ? "visible" : "hidden", textOverflow: expanded ? undefined : "ellipsis", whiteSpace: expanded ? "pre-wrap" : "nowrap", fontSize: 12, lineHeight: 1.4 }}>
-            {goal.objective}
-          </span>
-        </button>
-      )}
-      {plan && (
-        <div role="status" aria-live="polite" style={{ display: "flex", alignItems: "center", gap: 7, padding: "5px 9px", border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "var(--bg-panel)", color: "var(--text-muted)", fontSize: 12 }}>
-          <ListChecks size={14} strokeWidth={2} style={{ flexShrink: 0, color: "var(--accent)" }} aria-hidden="true" />
-          <span style={{ fontWeight: 600 }}>{t("chatInput.planningInProgress")}</span>
-          <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--text-dim)" }}>{plan.objective}</span>
-        </div>
-      )}
-    </div>
-  );
-}
 
 export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatInput({
   onSend, onAbort, onSteer, onFollowUp, isStreaming, model, isAutoModelSelection, modelNames, modelList, modelError, modelsLoading, onModelChange, fastModeEnabled, fastModeActive, fastModeSupported, onFastModeChange,
