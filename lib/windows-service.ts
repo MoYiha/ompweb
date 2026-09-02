@@ -300,10 +300,12 @@ export async function getWebServiceStatus(): Promise<WebServiceStatus> {
     try {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), 1500);
-      const res = await fetch(probeUrl, { signal: controller.signal, cache: "no-store" } as RequestInit);
-      clearTimeout(timer);
-      // Any HTTP response (including 401/403) proves the server is listening.
-      isRunning = res.status < 600;
+      try {
+        const res = await fetch(probeUrl, { signal: controller.signal, cache: "no-store" } as RequestInit);
+        isRunning = res.status < 600;
+      } finally {
+        clearTimeout(timer);
+      }
     } catch {
       // fetch failed → not listening
     }

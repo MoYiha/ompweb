@@ -4,13 +4,14 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { getSubmitDuringRunBehavior, setSubmitDuringRunBehavior, type SubmitDuringRunBehavior } from "@/lib/composer-prefs";
 import dynamic from "next/dynamic";
 import { Copy, Download, ExternalLink, RefreshCw, RotateCcw, Search, AlertCircle, Monitor, Play, Square, Trash2 } from "lucide-react";
+import { Alert } from "@/components/ui/field";
+import { toast } from "@/components/ui/toast";
+import { useI18n } from "@/lib/i18n";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/primitives";
 import { SettingsTabs, type SettingsTab, SETTINGS_CATEGORIES, getNormalizedActive } from "./SettingsTabs";
-import { useI18n } from "@/lib/i18n";
 import { copyText } from "@/lib/clipboard";
 import type { AppUpdateInfo } from "./AppUpdateDialog";
-
 import { useFontSize, type FontSizePreference } from "@/hooks/useFontSize";
 import { useUiScale, type UiScalePreference } from "@/hooks/useUiScale";
 const SettingsTabLoading = () => {
@@ -557,7 +558,9 @@ export function SettingsConfig({ activeTab, toolCallsDefaultCollapsed, onToolCal
       const commitRes = await fetch("/api/omp-update", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "commit", attemptId: prepData.attemptId }) });
       const commitData = (await commitRes.json()) as { error?: string };
       if (!commitRes.ok) throw new Error(commitData.error || `HTTP ${commitRes.status}`);
+      const deadline = Date.now() + 5 * 60 * 1000;
       while (true) {
+        if (Date.now() > deadline) throw new Error(t("settingsConfig.ompUpdateFailed"));
         await new Promise((r) => setTimeout(r, 500));
         const statusRes = await fetch("/api/omp-update", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "status" }) });
         const status = (await statusRes.json()) as { state?: string; error?: string } | null;
@@ -693,8 +696,8 @@ export function SettingsConfig({ activeTab, toolCallsDefaultCollapsed, onToolCal
 
               <div style={contentStyle}>
             {nativeSettingsError && (
-              <div role="alert" style={{ margin: 16, padding: "10px 14px", borderRadius: "var(--radius-card)", background: "var(--bg-panel)", border: "1px solid var(--status-error)", color: "var(--status-error)", fontSize: 12, display: "flex", alignItems: "center", gap: 8 }}>
-                <AlertCircle size={14} aria-hidden="true" /> {nativeSettingsError}
+              <div style={{ margin: 16 }}>
+                <Alert variant="error" description={nativeSettingsError} onDismiss={() => setNativeSettingsError(null)} />
               </div>
             )}
 
@@ -1142,8 +1145,8 @@ export function SettingsConfig({ activeTab, toolCallsDefaultCollapsed, onToolCal
                               type="button"
                               onClick={() => {
                                 void copyText(appUpdate.updateCommand || "npm install -g @kahme247/ompweb")
-                                  .then(() => setAppUpdateMessage(t("appShell.commandCopied")))
-                                  .catch(() => setAppUpdateMessage(t("appShell.commandCopyFailed")));
+                                  .then(() => toast.success(t("appShell.commandCopied")))
+                                  .catch(() => toast.error(t("appShell.commandCopyFailed")));
                               }}
                               style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "4px 8px", border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "var(--bg-subtle)", color: "var(--text)", cursor: "pointer", fontSize: 11 }}
                             >
@@ -1154,7 +1157,7 @@ export function SettingsConfig({ activeTab, toolCallsDefaultCollapsed, onToolCal
                       )}
                     </div>
                   )}
-                  {appUpdateMessage && <p role="status" style={{ margin: "2px 0 0", color: "var(--text-muted)", fontSize: 12, lineHeight: 1.5 }}>{appUpdateMessage}</p>}
+                  {appUpdateMessage && <Alert variant={appUpdateMessage.toLowerCase().includes("fail") || appUpdateMessage.toLowerCase().includes("error") ? "error" : "info"} description={appUpdateMessage} onDismiss={() => setAppUpdateMessage(null)} />}
                 </section>
 
                 {/* OMP runtime update card */}
@@ -1187,8 +1190,8 @@ export function SettingsConfig({ activeTab, toolCallsDefaultCollapsed, onToolCal
                           type="button"
                           onClick={() => {
                             void copyText(update.updateCommand || "omp update")
-                              .then(() => setMessage(t("appShell.commandCopied")))
-                              .catch(() => setMessage(t("appShell.commandCopyFailed")));
+                              .then(() => toast.success(t("appShell.commandCopied")))
+                              .catch(() => toast.error(t("appShell.commandCopyFailed")));
                           }}
                           style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "4px 8px", border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "var(--bg-subtle)", color: "var(--text)", cursor: "pointer", fontSize: 11 }}
                         >
@@ -1215,7 +1218,7 @@ export function SettingsConfig({ activeTab, toolCallsDefaultCollapsed, onToolCal
                       <ExternalLink size={13} aria-hidden="true" /> {t("settingsConfig.changelog")}
                     </a>
                   </div>
-                  {message && <p role="status" style={{ margin: "4px 0 0", color: "var(--text-muted)", fontSize: 12, lineHeight: 1.5 }}>{message}</p>}
+                  {message && <Alert variant={message.toLowerCase().includes("fail") || message.toLowerCase().includes("error") ? "error" : "info"} description={message} onDismiss={() => setMessage(null)} />}
                 </section>
 
                 {/* Windows Background Service & System Tray card (Windows only) */}

@@ -406,7 +406,7 @@ export function AppShell() {
           translate("appShell.ompUpdateAvailable"),
           <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 4 }}>
             <div>{translate("appShell.updateVersion", { current: data.currentVersion ?? "?", available: data.availableVersion })}</div>
-            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
               <code style={{ background: "var(--bg-panel)", padding: "3px 7px", borderRadius: "var(--radius-control)", fontSize: 11, fontFamily: "var(--font-mono)" }}>
                 {cmd}
               </code>
@@ -421,8 +421,19 @@ export function AppShell() {
               >
                 {translate("appShell.copyCommand")}
               </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setSettingsTab("system");
+                  toast.close("omp-update-available");
+                }}
+                style={{ padding: "3px 7px", border: "1px solid var(--accent-strong)", borderRadius: "var(--radius-control)", background: "var(--accent-strong)", color: "var(--on-accent)", cursor: "pointer", fontSize: 11, fontWeight: 600 }}
+              >
+                {translate("settingsConfig.ompUpdateAction")}
+              </button>
             </div>
-          </div>
+          </div>,
+          { id: "omp-update-available", timeout: 0 }
         );
       })
       .catch(() => {});
@@ -465,7 +476,7 @@ export function AppShell() {
           translate("appShell.appUpdateAvailable"),
           <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 4 }}>
             <div>{translate("appShell.updateVersion", { current: data.currentVersion ?? "?", available: data.availableVersion })}</div>
-            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
               <code style={{ background: "var(--bg-panel)", padding: "3px 7px", borderRadius: "var(--radius-control)", fontSize: 11, fontFamily: "var(--font-mono)" }}>
                 {cmd}
               </code>
@@ -480,8 +491,19 @@ export function AppShell() {
               >
                 {translate("appShell.copyCommand")}
               </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setSettingsTab("system");
+                  toast.close("app-update-available");
+                }}
+                style={{ padding: "3px 7px", border: "1px solid var(--accent-strong)", borderRadius: "var(--radius-control)", background: "var(--accent-strong)", color: "var(--on-accent)", cursor: "pointer", fontSize: 11, fontWeight: 600 }}
+              >
+                {translate("settingsConfig.appUpdateAction")}
+              </button>
             </div>
           </div>,
+          { id: "app-update-available", timeout: 0 }
         );
       }
     }
