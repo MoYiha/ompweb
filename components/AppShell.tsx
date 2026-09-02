@@ -1938,6 +1938,7 @@ export function AppShell() {
                   borderBottom: "1px solid var(--border)",
                   boxShadow: "var(--shadow-pop)",
                   padding: "12px 16px",
+                  minWidth: isMobile ? undefined : 580,
                 }}>
                   {sessionStats ? (() => {
                     const sessionRows = [
@@ -1989,7 +1990,7 @@ export function AppShell() {
                                   minWidth: 0,
                                   overflowWrap: compact ? "normal" : "anywhere",
                                   textAlign: valueAlign,
-                                  whiteSpace: valueAlign === "right" ? "nowrap" : "normal",
+                                  whiteSpace: "nowrap",
                                 }}>{value}</div>
                               </div>
                             ))}
@@ -2069,18 +2070,14 @@ export function AppShell() {
                         display: "grid",
                         gridTemplateColumns: isMobile
                           ? "1fr"
-                          // Mins must fit inside the popover's 680px max-width
-                          // (3 columns + 2×24px gaps): 240+110+140+48 = 538.
-                          // Larger mins overflow and clip the Messages/Tokens
-                          // values off the right edge.
-                          : "minmax(240px, 1.6fr) minmax(110px, 0.55fr) minmax(140px, 0.65fr)",
+                          : "minmax(220px, 1fr) auto auto",
                         gap: isMobile ? 16 : 24,
                         fontSize: 12,
                         lineHeight: 1.5,
                         fontFamily: "var(--font-mono)",
                       }}>
                         {sessionInfoSection}
-                        {section(t("appShell.sectionMessages"), messageRows)}
+                        {section(t("appShell.sectionMessages"), messageRows, "right", true)}
                         {section(t("appShell.sectionTokens"), [...tokenRows, ...extraTokenRows], "right", true)}
                       </div>
                     );
