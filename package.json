@@ -21,6 +21,7 @@
   },
   "files": [
     "bin",
+    "lib",
     ".next",
     "!.next/cache",
     "!.next/dev",
