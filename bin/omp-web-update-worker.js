@@ -208,9 +208,8 @@ async function main() {
 
   let svcInfo = { launchd: false, tray: false };
   try {
-    svcInfo = await stopOriginalProcesses();
+    if (kind !== "omp") svcInfo = await stopOriginalProcesses();
     await runManagerGate();
-    // verify version: read package.json after install
     try {
       const pkgPath = path.join(packageDir, "package.json");
       if (fs.existsSync(pkgPath)) {
@@ -220,8 +219,7 @@ async function main() {
         }
       }
     } catch {}
-    await restartServices(svcInfo);
-    updateStatus({ stage: "finalizing" });
+    if (kind !== "omp") await restartServices(svcInfo);
     await sleep(500);
     updateStatus({ state: "succeeded", stage: "finalizing", finishedAt: new Date().toISOString(), cleanupReady: true });
     // write complete marker
