@@ -402,7 +402,7 @@ $contextMenu = New-Object System.Windows.Forms.ContextMenuStrip
 
 # Item 1: App Header
 $script:MenuItemHeader = New-Object System.Windows.Forms.ToolStripMenuItem
-$script:MenuItemHeader.Text = "● omp-web (v$PkgVersion)"
+$script:MenuItemHeader.Text = "omp-web (v$PkgVersion)"
 $script:MenuItemHeader.Font = New-Object System.Drawing.Font($script:MenuItemHeader.Font, [System.Drawing.FontStyle]::Bold)
 $script:MenuItemHeader.Enabled = $false
 $contextMenu.Items.Add($script:MenuItemHeader) | Out-Null
@@ -417,7 +417,7 @@ $contextMenu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator)) | O
 
 # Item 3: Open in Browser
 $script:MenuItemOpen = New-Object System.Windows.Forms.ToolStripMenuItem
-$script:MenuItemOpen.Text = "🌐 Open in Browser"
+$script:MenuItemOpen.Text = "Open in Browser"
 $script:MenuItemOpen.Font = New-Object System.Drawing.Font($script:MenuItemOpen.Font, [System.Drawing.FontStyle]::Bold)
 $script:MenuItemOpen.add_Click({
     try { [System.Diagnostics.Process]::Start($ServerUrl) | Out-Null } catch { }
@@ -426,7 +426,7 @@ $contextMenu.Items.Add($script:MenuItemOpen) | Out-Null
 
 # Item 4: Copy URL
 $script:MenuItemCopy = New-Object System.Windows.Forms.ToolStripMenuItem
-$script:MenuItemCopy.Text = "📋 Copy Web URL"
+$script:MenuItemCopy.Text = "Copy Web URL"
 $script:MenuItemCopy.add_Click({
     try {
         [System.Windows.Forms.Clipboard]::SetText($ServerUrl)
@@ -439,13 +439,13 @@ $contextMenu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator)) | O
 
 # Item 5: Restart Server
 $script:MenuItemRestart = New-Object System.Windows.Forms.ToolStripMenuItem
-$script:MenuItemRestart.Text = "🔄 Restart Server"
+$script:MenuItemRestart.Text = "Restart Server"
 $script:MenuItemRestart.add_Click({ Restart-WebServer })
 $contextMenu.Items.Add($script:MenuItemRestart) | Out-Null
 
 # Item 6: Toggle Start/Stop Server
 $script:MenuItemToggle = New-Object System.Windows.Forms.ToolStripMenuItem
-$script:MenuItemToggle.Text = "⏹ Stop Server"
+$script:MenuItemToggle.Text = "Stop Server"
 $script:MenuItemToggle.add_Click({
     if ($script:State -eq "Running" -or $script:State -eq "Starting") {
         Stop-WebServer
@@ -459,7 +459,7 @@ $contextMenu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator)) | O
 
 # Item 7: View Logs
 $script:MenuItemViewLogs = New-Object System.Windows.Forms.ToolStripMenuItem
-$script:MenuItemViewLogs.Text = "📄 View Logs"
+$script:MenuItemViewLogs.Text = "View Logs"
 $script:MenuItemViewLogs.add_Click({
     try { Start-Process "notepad.exe" "`"$LogFile`"" } catch { }
 })
@@ -467,7 +467,7 @@ $contextMenu.Items.Add($script:MenuItemViewLogs) | Out-Null
 
 # Item 8: Edit Configuration
 $script:MenuItemConfig = New-Object System.Windows.Forms.ToolStripMenuItem
-$script:MenuItemConfig.Text = "⚙ Edit Configuration"
+$script:MenuItemConfig.Text = "Edit Configuration"
 $script:MenuItemConfig.add_Click({
     if (!(Test-Path $ConfigPath)) {
         Set-AutostartShortcut (Check-AutostartShortcut)
@@ -478,7 +478,7 @@ $contextMenu.Items.Add($script:MenuItemConfig) | Out-Null
 
 # Item 9: Open Project Folder
 $script:MenuItemOpenFolder = New-Object System.Windows.Forms.ToolStripMenuItem
-$script:MenuItemOpenFolder.Text = "📁 Open Project Folder"
+$script:MenuItemOpenFolder.Text = "Open Project Folder"
 $script:MenuItemOpenFolder.add_Click({
     try { Start-Process "explorer.exe" "`"$RepoRoot`"" } catch { }
 })
@@ -488,7 +488,7 @@ $contextMenu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator)) | O
 
 # Item 10: Autostart Toggle
 $script:MenuItemAutostart = New-Object System.Windows.Forms.ToolStripMenuItem
-$script:MenuItemAutostart.Text = "☑ Start with Windows"
+$script:MenuItemAutostart.Text = "Start with Windows"
 $script:MenuItemAutostart.CheckOnClick = $true
 $script:MenuItemAutostart.Checked = Check-AutostartShortcut
 $script:MenuItemAutostart.add_Click({
@@ -500,7 +500,7 @@ $contextMenu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator)) | O
 
 # Item 11: Exit
 $script:MenuItemExit = New-Object System.Windows.Forms.ToolStripMenuItem
-$script:MenuItemExit.Text = "🚪 Exit Tray & Server"
+$script:MenuItemExit.Text = "Exit Tray & Server"
 $script:MenuItemExit.add_Click({
     $script:IsExiting = $true
     Write-ServiceLog "Exit requested from system tray menu."
@@ -541,10 +541,10 @@ function Update-TrayUI {
     $script:NotifyIcon.Text = $tipText
 
     if ($script:State -eq "Running" -or $script:State -eq "Starting") {
-        $script:MenuItemToggle.Text = "⏹ Stop Server"
+        $script:MenuItemToggle.Text = "Stop Server"
         $script:MenuItemRestart.Enabled = $true
     } else {
-        $script:MenuItemToggle.Text = "▶ Start Server"
+        $script:MenuItemToggle.Text = "Start Server"
         $script:MenuItemRestart.Enabled = $false
     }
     $script:MenuItemAutostart.Checked = Check-AutostartShortcut

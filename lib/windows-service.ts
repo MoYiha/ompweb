@@ -289,7 +289,25 @@ export async function getWebServiceStatus(): Promise<WebServiceStatus> {
   const startupExists = isWindows && existsSync(shortcuts.startup);
 
   const isInstalled = desktopExists || startMenuExists || startupExists || existsSync(getWebServiceConfigPath());
-  const isRunning = await isTrayProcessRunning();
+  let isRunning = await isTrayProcessRunning();
+  // Fallback: tray process detection via WMI CommandLine can miss hidden wscript-launched
+  // powershell (or manual `node bin/omp-web.js start`). If the service URL is
+  // actually listening, report as running even when tray detection fails.
+  if (!isRunning) {
+    const host = config.hostname || "127.0.0.1";
+    const port = config.port;
+    const probeUrl = (host === "0.0.0.0" || host === "::" || !host) ? `http://127.0.0.1:${port}/api/app-update` : `http://${host}:${port}/api/app-update`;
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 1500);
+      const res = await fetch(probeUrl, { signal: controller.signal, cache: "no-store" } as RequestInit);
+      clearTimeout(timer);
+      // Any HTTP response (including 401/403) proves the server is listening.
+      isRunning = res.status < 600;
+    } catch {
+      // fetch failed → not listening
+    }
+  }
 
   const host = config.hostname;
   const port = config.port;

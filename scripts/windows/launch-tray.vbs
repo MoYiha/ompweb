@@ -32,7 +32,7 @@ For i = 0 To args.Count - 1
     End If
 Next
 
-cmd = """" & psExe & """ -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File """ & psScriptPath & """" & argStr
+cmd = """" & psExe & """ -NoProfile -Sta -ExecutionPolicy Bypass -WindowStyle Hidden -File """ & psScriptPath & """" & argStr
 
 ' WindowStyle 0 = SW_HIDE (zero console flicker)
 ' bWaitOnReturn False = Asynchronous execution
