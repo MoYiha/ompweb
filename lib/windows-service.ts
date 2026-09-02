@@ -261,7 +261,7 @@ export async function isTrayProcessRunning(): Promise<boolean> {
         "-ExecutionPolicy",
         "Bypass",
         "-Command",
-        '$procs = Get-CimInstance Win32_Process -Filter "Name LIKE \'%powershell%\' OR Name LIKE \'%pwsh%\'" -ErrorAction SilentlyContinue | Where-Object { $_.ProcessId -ne $PID -and $_.CommandLine -like \'*omp-web-tray.ps1*\' }; ($procs | Measure-Object).Count',
+        '$procs = Get-CimInstance Win32_Process -Filter "Name LIKE \'%powershell%\' OR Name LIKE \'%pwsh%\'" -ErrorAction SilentlyContinue | Where-Object { $_.ProcessId -ne $PID -and ($_.CommandLine -like \'*omp-web-tray.ps1*\' -or $_.CommandLine -like \'*omp-web-service.ps1*\') }; ($procs | Measure-Object).Count',
       ],
       { timeout: 4000, env: getWindowsExecutionEnv(), windowsHide: true }
     );
@@ -472,6 +472,27 @@ export async function startTrayService(options: { openBrowser?: boolean } = {}):
     return { success: false, message: "Tray service can only be started on Windows." };
   }
 
+  // Prefer Scheduled Task (headless service) if it exists — more reliable than hidden wscript.
+  try {
+    const psExe = resolvePowerShellBin();
+    // Check if task exists: schtasks /query returns 0 if found.
+    try {
+      await execFileAsync("schtasks.exe", ["/query", "/tn", "omp-web"], { timeout: 3000, env: getWindowsExecutionEnv(), windowsHide: true });
+      // Task exists, try to run it (ONLOGON tasks can be triggered via /run even without logon trigger).
+      await execFileAsync("schtasks.exe", ["/run", "/tn", "omp-web"], { timeout: 5000, env: getWindowsExecutionEnv(), windowsHide: true });
+      invalidateTrayRunningCache();
+      // Optionally open browser if requested.
+      if (options.openBrowser) {
+        const config = await loadWebServiceConfig();
+        const url = `http://${config.hostname || "127.0.0.1"}:${config.port}`;
+        try { await execFileAsync("cmd.exe", ["/c", "start", "", url], { timeout: 2000, windowsHide: true } as unknown as { timeout: number; windowsHide: boolean }); } catch { }
+      }
+      return { success: true };
+    } catch {
+      // Task doesn't exist or /run failed, fall through to wscript fallback.
+    }
+  } catch { }
+
   const repoRoot = getRepoRoot();
   const launchVbs = path.join(repoRoot, "scripts", "windows", "launch-tray.vbs");
 
@@ -526,11 +547,25 @@ export async function stopTrayService(): Promise<{ success: boolean; message?: s
     return { success: false, message: "Only supported on Windows." };
   }
   try {
+    // Try to end Scheduled Task first (headless service)
+    try {
+      await execFileAsync("schtasks.exe", ["/end", "/tn", "omp-web"], { timeout: 3000, env: getWindowsExecutionEnv(), windowsHide: true });
+    } catch { }
     const taskkillExe = resolveTaskkillBin();
     const psCommand = `
-      $trayProcs = Get-CimInstance Win32_Process -Filter "Name LIKE '%powershell%' OR Name LIKE '%pwsh%'" -ErrorAction SilentlyContinue | Where-Object { $_.ProcessId -ne $PID -and $_.CommandLine -like '*omp-web-tray.ps1*' }
+      $trayProcs = Get-CimInstance Win32_Process -Filter "Name LIKE '%powershell%' OR Name LIKE '%pwsh%'" -ErrorAction SilentlyContinue | Where-Object { $_.ProcessId -ne $PID -and ($_.CommandLine -like '*omp-web-tray.ps1*' -or $_.CommandLine -like '*omp-web-service.ps1*') }
       foreach ($p in $trayProcs) {
           Start-Process -FilePath '${taskkillExe.replace(/'/g, "''")}' -ArgumentList "/PID $($p.ProcessId) /T /F" -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue | Out-Null
+      }
+      # Also kill orphaned node servers on the service port
+      $cfg = Get-Content "$env:USERPROFILE\\.omp\\agent\\web-service.json" -Raw -ErrorAction SilentlyContinue | ConvertFrom-Json -ErrorAction SilentlyContinue
+      $port = if ($cfg -and $cfg.port) { [int]$cfg.port } else { 30177 }
+      $conns = Get-NetTCPConnection -LocalPort $port -ErrorAction SilentlyContinue | Where-Object { $_.State -eq "Listen" }
+      foreach ($c in $conns) {
+          $owner = Get-CimInstance Win32_Process -Filter "ProcessId = $($c.OwningProcess)" -ErrorAction SilentlyContinue
+          if ($owner -and $owner.Name -like "node*") {
+              Start-Process -FilePath '${taskkillExe.replace(/'/g, "''")}' -ArgumentList "/PID $($c.OwningProcess) /T /F" -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue | Out-Null
+          }
       }
     `;
     const psExe = resolvePowerShellBin();

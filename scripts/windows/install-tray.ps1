@@ -211,11 +211,44 @@ if (!$NoAutostart) {
         Remove-Item -Path $startupLnk -Force -ErrorAction SilentlyContinue
     }
 }
-
 Log-Message ""
 Log-Message "Installation complete!"
 Log-Message "Live server URL : http://${Hostname}:${Port}"
 Log-Message "Tray Launcher   : $LaunchVbs"
+
+# -----------------------------------------------------------------------------
+# 3b. Register Scheduled Task for headless service (robust, no desktop heap)
+# -----------------------------------------------------------------------------
+$ServicePs1 = Join-Path $RepoRoot "scripts\windows\omp-web-service.ps1"
+if (!$NoAutostart -and (Test-Path $ServicePs1)) {
+    try {
+        $taskName = "omp-web"
+        $actionArg = "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$ServicePs1`""
+        # Use schtasks for compatibility (no admin required for current user ONLOGON)
+        $createArgs = "/create /tn `"$taskName`" /tr `"powershell $actionArg`" /sc onlogon /f"
+        # schtasks may require quoted task name
+        $proc = Start-Process -FilePath "schtasks.exe" -ArgumentList $createArgs -WindowStyle Hidden -Wait -PassThru -ErrorAction SilentlyContinue
+        if ($proc.ExitCode -eq 0) {
+            Log-Message "  [OK] Scheduled Task created: $taskName (ONLOGON)"
+        } else {
+            # Fallback: try PowerShell Register-ScheduledTask
+            try {
+                $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument $actionArg
+                $trigger = New-ScheduledTaskTrigger -AtLogOn
+                $principal = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" -LogonType S4U -RunLevel Limited
+                $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable
+                Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force | Out-Null
+                Log-Message "  [OK] Scheduled Task created via PowerShell: $taskName"
+            } catch {
+                Log-Message "  [WARN] Failed to create Scheduled Task: $($_.Exception.Message)"
+            }
+        }
+    } catch {
+        Log-Message "  [WARN] Scheduled Task creation failed: $($_.Exception.Message)"
+    }
+} elseif ($NoAutostart) {
+    try { schtasks /delete /tn "omp-web" /f 2>$null | Out-Null } catch { }
+}
 
 # -----------------------------------------------------------------------------
 # 4. Optional Immediate Launch
