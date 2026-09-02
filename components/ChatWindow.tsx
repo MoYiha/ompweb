@@ -870,6 +870,27 @@ export function ChatWindow({ session, newSessionCwd, toolCallsDefaultCollapsed =
     /* Focus the textarea after React commits the visibility change */
     requestAnimationFrame(() => chatInputRef?.current?.focus());
   }, [chatInputRef]);
+  const composerStatusText = useMemo(() => {
+    if (bashRunning && !pendingBash) {
+      return t("chatWindow.runningCommand");
+    }
+    if (isCompacting || (agentRunning && !streamState.streamingMessage && pendingToolHeaders.length === 0)) {
+      return [
+        phaseLabel(agentPhase),
+        activeSubagentCount > 0 ? tn("chatWindow.subagentCount", activeSubagentCount) : null,
+        isCompacting ? t("chatWindow.compactingContext") : null,
+        currentTodoPhase
+          ? t("chatWindow.todoPhaseStatus", {
+              name: currentTodoPhase.name,
+              done: currentTodoPhase.done,
+              total: currentTodoPhase.total,
+            })
+          : null,
+      ].filter(Boolean).join(" · ");
+    }
+    return null;
+  }, [bashRunning, pendingBash, isCompacting, agentRunning, streamState.streamingMessage, pendingToolHeaders.length, agentPhase, activeSubagentCount, currentTodoPhase, t, tn]);
+
 
   const chatInputElement = (
     <ChatInput
@@ -925,6 +946,7 @@ export function ChatWindow({ session, newSessionCwd, toolCallsDefaultCollapsed =
          accept Escape-to-minimize in the fresh-chat branch where there is
          nothing to collapse. */
       onMinimize={isEmptyNew ? undefined : handleMinimize}
+      statusText={composerStatusText}
     />
   );
 
@@ -1137,38 +1159,6 @@ export function ChatWindow({ session, newSessionCwd, toolCallsDefaultCollapsed =
               </div>
             ))}
 
-            {(isCompacting || (agentRunning && !streamState.streamingMessage && pendingToolHeaders.length === 0)) && (
-              <div role="status" aria-live="polite" className="py-2 text-[13px] text-text-muted flex items-center gap-2">
-                <span
-                  aria-hidden
-                  className="live-status-dot live-pulse inline-block h-2 w-2 shrink-0 rounded-full bg-accent"
-                />
-                <span>
-                  {[
-                    phaseLabel(agentPhase),
-                    activeSubagentCount > 0 ? tn("chatWindow.subagentCount", activeSubagentCount) : null,
-                    isCompacting ? t("chatWindow.compactingContext") : null,
-                    currentTodoPhase
-                      ? t("chatWindow.todoPhaseStatus", {
-                          name: currentTodoPhase.name,
-                          done: currentTodoPhase.done,
-                          total: currentTodoPhase.total,
-                        })
-                      : null,
-                  ].filter(Boolean).join(" · ")}
-                </span>
-              </div>
-            )}
-
-            {bashRunning && !pendingBash && (
-              <div role="status" aria-live="polite" className="py-2 text-[13px] text-text-muted flex items-center gap-2">
-                <span
-                  aria-hidden
-                  className="live-status-dot live-pulse inline-block h-2 w-2 shrink-0 rounded-full bg-accent"
-                />
-                <span>{t("chatWindow.runningCommand")}</span>
-              </div>
-            )}
 
             {pendingBash && (
               <MessageView
@@ -1203,6 +1193,7 @@ export function ChatWindow({ session, newSessionCwd, toolCallsDefaultCollapsed =
           draftKey={session?.id ?? (newSessionCwd ? `new:${newSessionCwd}` : undefined)}
           isStreaming={sessionBusy}
           isCompacting={isCompacting}
+          statusText={composerStatusText}
           expandRef={minimizedExpandRef}
           onExpand={handleExpand}
           onAbort={handleAbort}
@@ -1541,10 +1532,11 @@ function ExtensionCustomPanel({
 }
 
 /** Slim pill bar replacing the full composer when minimized. */
-const MinimizedComposerBar = memo(function MinimizedComposerBar({ draftKey, isStreaming, isCompacting, expandRef, onExpand, onAbort, onAbortCompaction }: {
+const MinimizedComposerBar = memo(function MinimizedComposerBar({ draftKey, isStreaming, isCompacting, statusText, expandRef, onExpand, onAbort, onAbortCompaction }: {
   draftKey?: string;
   isStreaming: boolean;
   isCompacting?: boolean;
+  statusText?: string | null;
   expandRef?: Ref<HTMLButtonElement>;
   onExpand: () => void;
   onAbort: () => void;
@@ -1597,17 +1589,34 @@ const MinimizedComposerBar = memo(function MinimizedComposerBar({ draftKey, isSt
             {hasAttachments && (
               <Paperclip size={13} strokeWidth={1.8} style={{ flexShrink: 0, color: "var(--text-muted)" }} />
             )}
-            <span style={{
-              flex: 1,
-              minWidth: 0,
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-              fontSize: 14,
-              color: draftText ? "var(--text)" : "var(--text-dim)",
-            }}>
-              {draftText ?? t("chatInput.placeholder")}
-            </span>
+            {statusText ? (
+              <span style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 7,
+                flex: 1,
+                minWidth: 0,
+                fontSize: 13,
+                color: "var(--text-muted)",
+              }}>
+                <span aria-hidden className="live-status-dot live-pulse inline-block h-2 w-2 shrink-0 rounded-full bg-accent" />
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {statusText}
+                </span>
+              </span>
+            ) : (
+              <span style={{
+                flex: 1,
+                minWidth: 0,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+                fontSize: 14,
+                color: draftText ? "var(--text)" : "var(--text-dim)",
+              }}>
+                {draftText ?? t("chatInput.placeholder")}
+              </span>
+            )}
           </button>
 
           {/* Stop button - sibling, only when agent is running */}

@@ -112,6 +112,8 @@ interface Props {
   onAdvisorChange?: (enabled: boolean) => void;
   /** Collapse the entire composer into a minimized bar. */
   onMinimize?: () => void;
+  /** Active status label attached to the composer's top edge (e.g. "Waiting for model..."). */
+  statusText?: string | null;
 }
 
 export interface ChatInputHandle {
@@ -414,6 +416,7 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
   advisorEnabled,
   onAdvisorChange,
   onMinimize,
+  statusText,
 }: Props, ref) {
   const isMobile = useIsMobile();
   const { t, tn, locale } = useI18n();
@@ -2219,6 +2222,31 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
             )}
           </div>
         )}
+        {/* Live agent status bar — attached to composer's top edge */}
+        {statusText && (
+          <div
+            role="status"
+            aria-live="polite"
+            style={{
+              border: `1px solid ${bashMode ? "var(--tool-bg)" : "color-mix(in srgb, var(--border) 70%, transparent)"}`,
+              borderBottom: "none",
+              borderRadius: queuedCount > 0 ? 0 : "var(--radius-card) var(--radius-card) 0 0",
+              background: "var(--bg-panel)",
+              padding: "6px 14px",
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              fontSize: 12,
+              color: "var(--text-muted)",
+            }}
+          >
+            <span
+              aria-hidden
+              className="live-status-dot live-pulse inline-block h-2 w-2 shrink-0 rounded-full bg-accent"
+            />
+            <span>{statusText}</span>
+          </div>
+        )}
           <div
             className="chat-input-shell"
             style={{
@@ -2226,7 +2254,7 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
               flexDirection: "column",
               background: "var(--bg)",
               border: `1px solid ${bashMode ? "var(--tool-bg)" : "color-mix(in srgb, var(--border) 70%, transparent)"}`,
-              borderRadius: "var(--radius-card)",
+              borderRadius: (queuedCount > 0 || Boolean(statusText)) ? "0 0 var(--radius-card) var(--radius-card)" : "var(--radius-card)",
               padding: "12px 12px 10px 14px",
               boxShadow: "var(--shadow-card)",
               transition: "border-color var(--dur-fast) var(--ease-out-warm), background var(--dur-fast) var(--ease-out-warm), box-shadow var(--dur-fast) var(--ease-out-warm)",

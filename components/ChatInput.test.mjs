@@ -217,3 +217,51 @@ test("tool preset picker is absent without a change handler", () => {
 
   assert.doesNotMatch(html, /Change tool preset/);
 });
+
+test("renders live status bar attached to the composer top edge when statusText is provided", () => {
+  const html = renderToStaticMarkup(
+    React.createElement(ChatInput, {
+      onSend() {},
+      onAbort() {},
+      isStreaming: true,
+      statusText: "Waiting for model...",
+    }),
+  );
+
+  assert.match(html, /role="status"/);
+  assert.match(html, /Waiting for model\.\.\./);
+  assert.match(html, /live-status-dot/);
+});
+
+test("omits live status bar when statusText is absent or null", () => {
+  const html = renderToStaticMarkup(
+    React.createElement(ChatInput, {
+      onSend() {},
+      onAbort() {},
+      isStreaming: false,
+      statusText: null,
+    }),
+  );
+
+  assert.doesNotMatch(html, /role="status"/);
+  assert.doesNotMatch(html, /Waiting for model/);
+});
+
+test("renders both queued prompts and attached status bar together", () => {
+  const html = renderToStaticMarkup(
+    React.createElement(ChatInput, {
+      onSend() {},
+      onAbort() {},
+      isStreaming: true,
+      statusText: "Waiting for model...",
+      queuedMessages: {
+        steer: [],
+        followUp: ["Next prompt to run"],
+      },
+    }),
+  );
+
+  assert.match(html, /Next prompt to run/);
+  assert.match(html, /Waiting for model\.\.\./);
+  assert.match(html, /live-status-dot/);
+});
