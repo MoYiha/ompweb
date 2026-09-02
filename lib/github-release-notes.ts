@@ -1,5 +1,4 @@
 const RELEASES_API_URL = "https://api.github.com/repos/kahme247/ompweb/releases/tags/";
-const RELEASE_PAGE_URL = "https://github.com/kahme247/ompweb/releases/tag/";
 const FETCH_TIMEOUT_MS = 5_000;
 export const MAX_BODY_BYTES = 64 * 1024;
 

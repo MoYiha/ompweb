@@ -15,7 +15,7 @@ import {
 import { spawn } from "child_process";
 import { randomUUID } from "crypto";
 import { tmpdir } from "os";
-import { dirname, isAbsolute, join, posix, resolve, win32 } from "path";
+import { dirname, join, posix, resolve, win32 } from "path";
 import { checkNpmUpdate, detectInstallMethod } from "./npm-update";
 import { checkOmpUpdate } from "./omp/updates";
 
@@ -119,13 +119,6 @@ function atomicWrite(path: string, value: string): void {
   } catch (error) {
     rmSync(temporary, { force: true });
     throw error;
-  }
-}
-function readJson<T>(path: string): T | null {
-  try {
-    return JSON.parse(readFileSync(path, "utf8")) as T;
-  } catch {
-    return null;
   }
 }
 function readStateJson<T>(path: string): T | null {
@@ -300,7 +293,7 @@ function detectManager(packageDir: string): { manager: "npm" | "bun"; managerPat
 
 export async function prepareSelfUpdate(kind: Kind = "app"): Promise<PrepareResult> {
   cleanupStaleSelfUpdate(Date.now(), kind);
-  const root = ensureSecureRoot(kind, true)!;
+  ensureSecureRoot(kind, true);
   const leaseFile = leasePath(kind);
   const statusFile = statusPath(kind);
   const existingLease = readStateJson<{ attemptId?: string; expiresAt?: number }>(leaseFile);

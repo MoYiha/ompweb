@@ -69,7 +69,7 @@ export function McpConfig({ cwd, sessionId }: { cwd: string | null; sessionId?: 
       setMessage(detail);
     } finally {
     }
-  }, [cwd, sessionId, t]);
+  }, [cwd, sessionId]);
 
   useEffect(() => { void load(); }, [load]);
 
