@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Check, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { Alert } from "@/components/ui/field";
 import { toast } from "@/components/ui/toast";
 import { useI18n } from "@/lib/i18n";
 
@@ -66,9 +67,7 @@ export function McpConfig({ cwd, sessionId }: { cwd: string | null; sessionId?: 
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
       setMessage(detail);
-      toast.error(t("mcpConfig.loadError"), detail);
     } finally {
-      setLoading(false);
     }
   }, [cwd, sessionId, t]);
 
@@ -108,11 +107,9 @@ export function McpConfig({ cwd, sessionId }: { cwd: string | null; sessionId?: 
       const data = await response.json() as { message?: string; error?: string };
       if (!response.ok || data.error) throw new Error(data.error || `HTTP ${response.status}`);
       setMessage(data.message ?? t("mcpConfig.validConfig"));
-      toast.success(t("mcpConfig.validConfig"));
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
       setMessage(detail);
-      toast.error(t("mcpConfig.invalidConfig"), detail);
     } finally {
       setSaving(false);
     }
@@ -127,13 +124,11 @@ export function McpConfig({ cwd, sessionId }: { cwd: string | null; sessionId?: 
       const data = await response.json() as { error?: string };
       if (!response.ok || data.error) throw new Error(data.error || `HTTP ${response.status}`);
       setSelected(name);
-      setMessage(t("mcpConfig.savedMsg"));
       toast.success(t("mcpConfig.serverSaved", { name }));
       await load();
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
       setMessage(detail);
-      toast.error(t("mcpConfig.saveError"), detail);
     } finally {
       setSaving(false);
     }
@@ -147,13 +142,10 @@ export function McpConfig({ cwd, sessionId }: { cwd: string | null; sessionId?: 
       const data = await response.json() as { error?: string };
       if (!response.ok || data.error) throw new Error(data.error || `HTTP ${response.status}`);
       add();
-      setMessage(t("mcpConfig.removedMsg"));
       toast.success(t("mcpConfig.serverRemoved", { name: selected }));
-      await load();
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
       setMessage(detail);
-      toast.error(t("mcpConfig.removeError"), detail);
     } finally {
       setSaving(false);
     }
@@ -267,7 +259,7 @@ export function McpConfig({ cwd, sessionId }: { cwd: string | null; sessionId?: 
             </button>
           )}
         </div>
-        {message && <div role="status" style={{ marginTop: 9, color: "var(--text-muted)", fontSize: 11, lineHeight: 1.4 }}>{message}</div>}
+        {message && <Alert variant={message.toLowerCase().includes("fail") || message.toLowerCase().includes("error") || message.toLowerCase().includes("invalid") ? "error" : "info"} description={message} onDismiss={() => setMessage(null)} />}
       </div>
     </div>
     </div>}

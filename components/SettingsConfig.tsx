@@ -3,13 +3,15 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useTransition, cloneElement, isValidElement, type ReactElement, type ReactNode } from "react";
 import { getSubmitDuringRunBehavior, setSubmitDuringRunBehavior, type SubmitDuringRunBehavior } from "@/lib/composer-prefs";
 import dynamic from "next/dynamic";
-import { Copy, ExternalLink, RefreshCw, RotateCcw, Search, AlertCircle, Monitor, Play, Square, Trash2 } from "lucide-react";
+import { Copy, Download, ExternalLink, RefreshCw, RotateCcw, Search, AlertCircle, Monitor, Play, Square, Trash2 } from "lucide-react";
+import { Alert } from "@/components/ui/field";
+import { toast } from "@/components/ui/toast";
+import { useI18n } from "@/lib/i18n";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/primitives";
 import { SettingsTabs, type SettingsTab, SETTINGS_CATEGORIES, getNormalizedActive } from "./SettingsTabs";
-import { useI18n } from "@/lib/i18n";
 import { copyText } from "@/lib/clipboard";
-
+import type { AppUpdateInfo } from "./AppUpdateDialog";
 import { useFontSize, type FontSizePreference } from "@/hooks/useFontSize";
 import { useUiScale, type UiScalePreference } from "@/hooks/useUiScale";
 const SettingsTabLoading = () => {
@@ -23,12 +25,7 @@ const McpConfig = dynamic(() => import("./McpConfig").then((module) => module.Mc
 const AgentsConfig = dynamic(() => import("./AgentsConfig").then((module) => module.AgentsConfig), { loading: SettingsTabLoading, ssr: false });
 const UsageConfig = dynamic(() => import("./UsageConfig").then((module) => module.UsageConfig), { loading: SettingsTabLoading, ssr: false });
 
-type UpdateState = {
-  currentVersion: string | null;
-  availableVersion: string | null;
-  updateAvailable: boolean;
-  updateCommand?: string;
-};
+type UpdateState = AppUpdateInfo;
 type WindowsServiceStatus = {
   isWindows: boolean;
   isInstalled: boolean;
@@ -45,7 +42,6 @@ type WindowsServiceStatus = {
   serviceUrl: string;
   version: string;
 };
-
 
 type NativeSettings = {
   defaultThinkingLevel?: "auto" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
@@ -359,7 +355,7 @@ function NativeSetting({ label, description, scope, searchId, children }: { labe
   );
 }
 
-export function SettingsConfig({ activeTab, toolCallsDefaultCollapsed, onToolCallsDefaultCollapsedChange, providerUsageVisible, onProviderUsageVisibleChange, cwd, sessionId, onModelsSaved, onPluginsReloaded, onOmpUpdateAvailabilityChange, onSelectTab, onClose }: {
+export function SettingsConfig({ activeTab, toolCallsDefaultCollapsed, onToolCallsDefaultCollapsedChange, providerUsageVisible, onProviderUsageVisibleChange, cwd, sessionId, onModelsSaved, onPluginsReloaded, appUpdate, onRefreshAppUpdate, onOmpUpdateAvailabilityChange, onRequestAppUpdate, onSelectTab, onClose }: {
   activeTab: SettingsTab;
   toolCallsDefaultCollapsed: boolean;
   onToolCallsDefaultCollapsedChange: (collapsed: boolean) => void;
@@ -369,7 +365,10 @@ export function SettingsConfig({ activeTab, toolCallsDefaultCollapsed, onToolCal
   sessionId: string | null;
   onModelsSaved: () => void;
   onPluginsReloaded: () => void;
+  appUpdate: AppUpdateInfo | null;
+  onRefreshAppUpdate: (force?: boolean) => Promise<AppUpdateInfo | null>;
   onOmpUpdateAvailabilityChange: (available: boolean) => void;
+  onRequestAppUpdate: () => void;
   onSelectTab: (tab: SettingsTab) => void;
   onClose: () => void;
 }) {
@@ -392,9 +391,10 @@ export function SettingsConfig({ activeTab, toolCallsDefaultCollapsed, onToolCal
   });
   const [update, setUpdate] = useState<UpdateState | null>(null);
   const [checking, setChecking] = useState(false);
-  const [appUpdate, setAppUpdate] = useState<UpdateState | null>(null);
   const [checkingAppUpdate, setCheckingAppUpdate] = useState(false);
+  const [appUpdateMessage, setAppUpdateMessage] = useState<string | null>(null);
   const [hasCheckedUpdates, setHasCheckedUpdates] = useState(false);
+  const [ompUpdating, setOmpUpdating] = useState(false);
   const [restarting, setRestarting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [windowsService, setWindowsService] = useState<WindowsServiceStatus | null>(null);
@@ -524,17 +524,15 @@ export function SettingsConfig({ activeTab, toolCallsDefaultCollapsed, onToolCal
 
   const checkForAppUpdate = useCallback(async (force = false) => {
     setCheckingAppUpdate(true);
+    setAppUpdateMessage(null);
     try {
-      const response = await fetch(force ? "/api/app-update?force=1" : "/api/app-update");
-      const data = (await response.json()) as UpdateState & { error?: string };
-      if (!response.ok || data.error) throw new Error(data.error || `HTTP ${response.status}`);
-      setAppUpdate(data);
+      await onRefreshAppUpdate(force);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : String(error));
+      setAppUpdateMessage(error instanceof Error ? error.message : String(error));
     } finally {
       setCheckingAppUpdate(false);
     }
-  }, []);
+  }, [onRefreshAppUpdate]);
 
   const restartSessions = useCallback(async () => {
     setRestarting(true);
@@ -549,6 +547,39 @@ export function SettingsConfig({ activeTab, toolCallsDefaultCollapsed, onToolCal
       setRestarting(false);
     }
   }, [t]);
+  const handleOmpUpdateNow = useCallback(async () => {
+    if (ompUpdating) return;
+    setOmpUpdating(true);
+    setMessage(null);
+    try {
+      const prepRes = await fetch("/api/omp-update", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "update" }) });
+      const prepData = (await prepRes.json()) as { attemptId?: string; error?: string; code?: string };
+      if (!prepRes.ok || !prepData.attemptId) throw new Error(prepData.error || `HTTP ${prepRes.status}`);
+      const commitRes = await fetch("/api/omp-update", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "commit", attemptId: prepData.attemptId }) });
+      const commitData = (await commitRes.json()) as { error?: string };
+      if (!commitRes.ok) throw new Error(commitData.error || `HTTP ${commitRes.status}`);
+      const deadline = Date.now() + 5 * 60 * 1000;
+      while (true) {
+        if (Date.now() > deadline) throw new Error(t("settingsConfig.ompUpdateFailed"));
+        await new Promise((r) => setTimeout(r, 500));
+        const statusRes = await fetch("/api/omp-update", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "status" }) });
+        const status = (await statusRes.json()) as { state?: string; error?: string } | null;
+        if (!status) break;
+        if (status.state === "succeeded") {
+          setMessage(t("settingsConfig.ompUpdateSuccess"));
+          await checkForUpdate(true);
+          try { await restartSessions(); } catch {}
+          break;
+        }
+        if (status.state === "failed") throw new Error(status.error || t("settingsConfig.ompUpdateFailed"));
+      }
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setOmpUpdating(false);
+    }
+  }, [ompUpdating, t, checkForUpdate, restartSessions]);
+
 
   const currentTab = getNormalizedActive(activeTab);
   useEffect(() => {
@@ -561,8 +592,7 @@ export function SettingsConfig({ activeTab, toolCallsDefaultCollapsed, onToolCal
     if (currentTab !== "system" || hasCheckedUpdates) return;
     setHasCheckedUpdates(true);
     void checkForUpdate();
-    void checkForAppUpdate();
-  }, [currentTab, hasCheckedUpdates, checkForUpdate, checkForAppUpdate]);
+  }, [currentTab, hasCheckedUpdates, checkForUpdate]);
 
   const trimmedQuery = searchQuery.trim().toLowerCase();
   const searchActive = trimmedQuery.length > 0;
@@ -666,8 +696,8 @@ export function SettingsConfig({ activeTab, toolCallsDefaultCollapsed, onToolCal
 
               <div style={contentStyle}>
             {nativeSettingsError && (
-              <div role="alert" style={{ margin: 16, padding: "10px 14px", borderRadius: "var(--radius-card)", background: "var(--bg-panel)", border: "1px solid var(--status-error)", color: "var(--status-error)", fontSize: 12, display: "flex", alignItems: "center", gap: 8 }}>
-                <AlertCircle size={14} aria-hidden="true" /> {nativeSettingsError}
+              <div style={{ margin: 16 }}>
+                <Alert variant="error" description={nativeSettingsError} onDismiss={() => setNativeSettingsError(null)} />
               </div>
             )}
 
@@ -1094,24 +1124,40 @@ export function SettingsConfig({ activeTab, toolCallsDefaultCollapsed, onToolCal
                     </button>
                   </div>
                   {appUpdate?.updateAvailable && (
-                    <div style={{ marginTop: 6, padding: "10px 12px", border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "var(--bg)", display: "flex", flexDirection: "column", gap: 6 }}>
-                      <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{t("settingsConfig.runAppUpdateCommand")}</div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <code style={{ flex: 1, fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--accent)", wordBreak: "break-all" }}>{appUpdate.updateCommand || "npm install -g @kahme247/ompweb"}</code>
+                    <div style={{ marginTop: 6, padding: "10px 12px", border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "var(--bg)", display: "flex", flexDirection: "column", gap: 8 }}>
+                      {appUpdate.selfUpdateSupported ? (
                         <button
                           type="button"
-                          onClick={() => {
-                            void copyText(appUpdate.updateCommand || "npm install -g @kahme247/ompweb")
-                              .then(() => setMessage(t("appShell.commandCopied")))
-                              .catch(() => setMessage(t("appShell.commandCopyFailed")));
-                          }}
-                          style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "4px 8px", border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "var(--bg-subtle)", color: "var(--text)", cursor: "pointer", fontSize: 11 }}
+                          onClick={onRequestAppUpdate}
+                          style={{ alignSelf: "flex-start", display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 12px", border: "1px solid var(--accent-strong)", borderRadius: "var(--radius-control)", background: "var(--accent-strong)", color: "var(--on-accent)", cursor: "pointer", fontSize: 12, fontWeight: 600 }}
                         >
-                          <Copy size={12} aria-hidden="true" /> {t("appShell.copyCommand")}
+                          <Download size={13} aria-hidden="true" />
+                          {t("settingsConfig.appUpdateAction")}
                         </button>
-                      </div>
+                      ) : (
+                        <>
+                          <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                            {t("settingsConfig.runAppUpdateCommand")}
+                          </div>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            <code style={{ flex: 1, fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--accent)", wordBreak: "break-all" }}>{appUpdate.updateCommand || "npm install -g @kahme247/ompweb"}</code>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                void copyText(appUpdate.updateCommand || "npm install -g @kahme247/ompweb")
+                                  .then(() => toast.success(t("appShell.commandCopied")))
+                                  .catch(() => toast.error(t("appShell.commandCopyFailed")));
+                              }}
+                              style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "4px 8px", border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "var(--bg-subtle)", color: "var(--text)", cursor: "pointer", fontSize: 11 }}
+                            >
+                              <Copy size={12} aria-hidden="true" /> {t("appShell.copyCommand")}
+                            </button>
+                          </div>
+                        </>
+                      )}
                     </div>
                   )}
+                  {appUpdateMessage && <Alert variant={appUpdateMessage.toLowerCase().includes("fail") || appUpdateMessage.toLowerCase().includes("error") ? "error" : "info"} description={appUpdateMessage} onDismiss={() => setAppUpdateMessage(null)} />}
                 </section>
 
                 {/* OMP runtime update card */}
@@ -1130,14 +1176,22 @@ export function SettingsConfig({ activeTab, toolCallsDefaultCollapsed, onToolCal
                   {update?.updateAvailable && (
                     <div style={{ marginTop: 6, padding: "10px 12px", border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "var(--bg)", display: "flex", flexDirection: "column", gap: 6 }}>
                       <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{t("settingsConfig.runOmpUpdateCommand")}</div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                         <code style={{ flex: 1, fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--accent)", wordBreak: "break-all" }}>{update.updateCommand || "omp update"}</code>
+                        <button
+                          type="button"
+                          onClick={() => void handleOmpUpdateNow()}
+                          disabled={ompUpdating}
+                          style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "4px 8px", border: "1px solid var(--accent-strong)", borderRadius: "var(--radius-control)", background: "var(--accent-strong)", color: "var(--on-accent)", cursor: ompUpdating ? "wait" : "pointer", fontSize: 11, fontWeight: 600 }}
+                        >
+                          <Download size={12} aria-hidden="true" /> {ompUpdating ? t("settingsConfig.updating") : t("settingsConfig.ompUpdateAction")}
+                        </button>
                         <button
                           type="button"
                           onClick={() => {
                             void copyText(update.updateCommand || "omp update")
-                              .then(() => setMessage(t("appShell.commandCopied")))
-                              .catch(() => setMessage(t("appShell.commandCopyFailed")));
+                              .then(() => toast.success(t("appShell.commandCopied")))
+                              .catch(() => toast.error(t("appShell.commandCopyFailed")));
                           }}
                           style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "4px 8px", border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "var(--bg-subtle)", color: "var(--text)", cursor: "pointer", fontSize: 11 }}
                         >
@@ -1164,7 +1218,7 @@ export function SettingsConfig({ activeTab, toolCallsDefaultCollapsed, onToolCal
                       <ExternalLink size={13} aria-hidden="true" /> {t("settingsConfig.changelog")}
                     </a>
                   </div>
-                  {message && <p role="status" style={{ margin: "4px 0 0", color: "var(--text-muted)", fontSize: 12, lineHeight: 1.5 }}>{message}</p>}
+                  {message && <Alert variant={message.toLowerCase().includes("fail") || message.toLowerCase().includes("error") ? "error" : "info"} description={message} onDismiss={() => setMessage(null)} />}
                 </section>
 
                 {/* Windows Background Service & System Tray card (Windows only) */}

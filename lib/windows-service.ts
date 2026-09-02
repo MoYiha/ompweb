@@ -261,7 +261,7 @@ export async function isTrayProcessRunning(): Promise<boolean> {
         "-ExecutionPolicy",
         "Bypass",
         "-Command",
-        '$procs = Get-CimInstance Win32_Process -Filter "Name LIKE \'%powershell%\' OR Name LIKE \'%pwsh%\'" -ErrorAction SilentlyContinue | Where-Object { $_.ProcessId -ne $PID -and $_.CommandLine -like \'*omp-web-tray.ps1*\' }; ($procs | Measure-Object).Count',
+        '$procs = Get-CimInstance Win32_Process -Filter "Name LIKE \'%powershell%\' OR Name LIKE \'%pwsh%\' OR Name LIKE \'%omp-web-tray%\'" -ErrorAction SilentlyContinue | Where-Object { $_.ProcessId -ne $PID -and ($_.CommandLine -like \'*omp-web-tray.ps1*\' -or $_.CommandLine -like \'*omp-web-service.ps1*\' -or $_.CommandLine -like \'*omp-web-tray.exe*\') }; ($procs | Measure-Object).Count',
       ],
       { timeout: 4000, env: getWindowsExecutionEnv(), windowsHide: true }
     );
@@ -289,7 +289,27 @@ export async function getWebServiceStatus(): Promise<WebServiceStatus> {
   const startupExists = isWindows && existsSync(shortcuts.startup);
 
   const isInstalled = desktopExists || startMenuExists || startupExists || existsSync(getWebServiceConfigPath());
-  const isRunning = await isTrayProcessRunning();
+  let isRunning = await isTrayProcessRunning();
+  // Fallback: tray process detection via WMI CommandLine can miss hidden wscript-launched
+  // powershell (or manual `node bin/omp-web.js start`). If the service URL is
+  // actually listening, report as running even when tray detection fails.
+  if (!isRunning) {
+    const host = config.hostname || "127.0.0.1";
+    const port = config.port;
+    const probeUrl = (host === "0.0.0.0" || host === "::" || !host) ? `http://127.0.0.1:${port}/api/app-update` : `http://${host}:${port}/api/app-update`;
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 1500);
+      try {
+        const res = await fetch(probeUrl, { signal: controller.signal, cache: "no-store" } as RequestInit);
+        isRunning = res.status < 600;
+      } finally {
+        clearTimeout(timer);
+      }
+    } catch {
+      // fetch failed → not listening
+    }
+  }
 
   const host = config.hostname;
   const port = config.port;
@@ -454,6 +474,57 @@ export async function startTrayService(options: { openBrowser?: boolean } = {}):
     return { success: false, message: "Tray service can only be started on Windows." };
   }
 
+  // Prefer Scheduled Task (headless service) if it exists — more reliable than hidden wscript.
+  try {
+    // Check if task exists: schtasks /query returns 0 if found.
+    try {
+      await execFileAsync("schtasks.exe", ["/query", "/tn", "omp-web"], { timeout: 3000, env: getWindowsExecutionEnv(), windowsHide: true });
+      // Task exists, try to run it (ONLOGON tasks can be triggered via /run even without logon trigger).
+      await execFileAsync("schtasks.exe", ["/run", "/tn", "omp-web"], { timeout: 5000, env: getWindowsExecutionEnv(), windowsHide: true });
+      invalidateTrayRunningCache();
+      // Optionally open browser if requested.
+      if (options.openBrowser) {
+        const config = await loadWebServiceConfig();
+        const url = `http://${config.hostname || "127.0.0.1"}:${config.port}`;
+        try { await execFileAsync("cmd.exe", ["/c", "start", "", url], { timeout: 2000, windowsHide: true } as unknown as { timeout: number; windowsHide: boolean }); } catch { }
+      }
+      return { success: true };
+    } catch {
+      // Task doesn't exist or /run failed, fall through to wscript fallback.
+    }
+  } catch { }
+  // Native tray exe (dotnet WinForms) — most reliable, no hidden wscript heap.
+  const nativeExe = path.join(getRepoRoot(), "bin", "omp-web-tray.exe");
+  if (existsSync(nativeExe)) {
+    try {
+      const nativeArgs: string[] = [];
+      if (options.openBrowser) nativeArgs.push("-OpenBrowser");
+      const child = spawn(nativeExe, nativeArgs, {
+        cwd: getRepoRoot(),
+        detached: true,
+        stdio: "ignore",
+        windowsHide: true,
+        env: getWindowsExecutionEnv(),
+      });
+      let settled = false;
+      child.on("error", () => { if (!settled) settled = true; });
+      child.unref();
+      await new Promise<void>((r) => setTimeout(r, 300));
+      if (!child.killed) {
+        invalidateTrayRunningCache();
+        if (options.openBrowser) {
+          try {
+            const cfg = await loadWebServiceConfig();
+            const url = `http://${cfg.hostname || "127.0.0.1"}:${cfg.port}`;
+            await execFileAsync("cmd.exe", ["/c", "start", "", url], { timeout: 2000, windowsHide: true } as unknown as { timeout: number; windowsHide: boolean });
+          } catch { }
+        }
+        return { success: true };
+      }
+    } catch { }
+  }
+
+
   const repoRoot = getRepoRoot();
   const launchVbs = path.join(repoRoot, "scripts", "windows", "launch-tray.vbs");
 
@@ -508,11 +579,29 @@ export async function stopTrayService(): Promise<{ success: boolean; message?: s
     return { success: false, message: "Only supported on Windows." };
   }
   try {
+    // Try to end Scheduled Task first (headless service)
+    try {
+      await execFileAsync("schtasks.exe", ["/end", "/tn", "omp-web"], { timeout: 3000, env: getWindowsExecutionEnv(), windowsHide: true });
+    } catch { }
     const taskkillExe = resolveTaskkillBin();
     const psCommand = `
-      $trayProcs = Get-CimInstance Win32_Process -Filter "Name LIKE '%powershell%' OR Name LIKE '%pwsh%'" -ErrorAction SilentlyContinue | Where-Object { $_.ProcessId -ne $PID -and $_.CommandLine -like '*omp-web-tray.ps1*' }
+      $trayProcs = Get-CimInstance Win32_Process -Filter "Name LIKE '%powershell%' OR Name LIKE '%pwsh%' OR Name LIKE '%omp-web-tray%'" -ErrorAction SilentlyContinue | Where-Object { $_.ProcessId -ne $PID -and ($_.CommandLine -like '*omp-web-tray.ps1*' -or $_.CommandLine -like '*omp-web-service.ps1*' -or $_.CommandLine -like '*omp-web-tray.exe*') }
       foreach ($p in $trayProcs) {
           Start-Process -FilePath '${taskkillExe.replace(/'/g, "''")}' -ArgumentList "/PID $($p.ProcessId) /T /F" -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue | Out-Null
+      }
+      # Also kill native tray exe directly by name (in case CommandLine is empty)
+      $nativeProcs = Get-CimInstance Win32_Process -Filter "Name = 'omp-web-tray.exe'" -ErrorAction SilentlyContinue
+      foreach ($p in $nativeProcs) {
+          Start-Process -FilePath '${taskkillExe.replace(/'/g, "''")}' -ArgumentList "/PID $($p.ProcessId) /T /F" -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue | Out-Null
+      }
+      # Also kill orphaned node servers on the service port
+      $port = if ($cfg -and $cfg.port) { [int]$cfg.port } else { 30177 }
+      $conns = Get-NetTCPConnection -LocalPort $port -ErrorAction SilentlyContinue | Where-Object { $_.State -eq "Listen" }
+      foreach ($c in $conns) {
+          $owner = Get-CimInstance Win32_Process -Filter "ProcessId = $($c.OwningProcess)" -ErrorAction SilentlyContinue
+          if ($owner -and $owner.Name -like "node*") {
+              Start-Process -FilePath '${taskkillExe.replace(/'/g, "''")}' -ArgumentList "/PID $($c.OwningProcess) /T /F" -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue | Out-Null
+          }
       }
     `;
     const psExe = resolvePowerShellBin();

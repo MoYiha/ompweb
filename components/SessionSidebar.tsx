@@ -294,22 +294,33 @@ function SidebarPortalMenu({
     const r = el.getBoundingClientRect();
     const width = menu.offsetWidth;
     const height = menu.offsetHeight;
+    // --ui-scale / zoom makes getBoundingClientRect() scaled while offsetWidth is unscaled.
+    // Convert the anchor rect to unscaled CSS pixels so the fixed menu (also zoomed) lands correctly.
+    let scale = 1;
+    if (typeof document !== "undefined") {
+      const raw = getComputedStyle(document.documentElement).getPropertyValue("--ui-scale");
+      const v = parseFloat(raw);
+      if (Number.isFinite(v) && v > 0) scale = v;
+    }
+    const ru = scale !== 1 ? { top: r.top / scale, right: r.right / scale, bottom: r.bottom / scale, left: r.left / scale } : r;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
     let top: number;
     if (placement === "above") {
-      top = r.top - height - MENU_MARGIN;
+      top = ru.top - height - MENU_MARGIN;
       if (top < MENU_VIEWPORT_PAD) {
-        top = Math.min(r.bottom + MENU_MARGIN, window.innerHeight - height - MENU_VIEWPORT_PAD);
+        top = Math.min(ru.bottom + MENU_MARGIN, vh - height - MENU_VIEWPORT_PAD);
       }
     } else {
-      top = r.bottom + MENU_MARGIN;
-      if (top + height > window.innerHeight - MENU_VIEWPORT_PAD) {
-        top = r.top - height - MENU_MARGIN;
+      top = ru.bottom + MENU_MARGIN;
+      if (top + height > vh - MENU_VIEWPORT_PAD) {
+        top = ru.top - height - MENU_MARGIN;
       }
     }
     if (top < MENU_VIEWPORT_PAD) top = MENU_VIEWPORT_PAD;
     const left = align === "start"
-      ? Math.max(MENU_VIEWPORT_PAD, Math.min(r.left, window.innerWidth - width - MENU_VIEWPORT_PAD))
-      : Math.max(MENU_VIEWPORT_PAD, Math.min(r.right - width, window.innerWidth - width - MENU_VIEWPORT_PAD));
+      ? Math.max(MENU_VIEWPORT_PAD, Math.min(ru.left, vw - width - MENU_VIEWPORT_PAD))
+      : Math.max(MENU_VIEWPORT_PAD, Math.min(ru.right - width, vw - width - MENU_VIEWPORT_PAD));
     setPos({ top, left });
   }, [placement, align]);
 
@@ -3085,8 +3096,8 @@ const SessionItem = memo(function SessionItem({
                 <button type="button" ref={menuButtonRef} className="session-item-icon-button" onClick={(event) => { event.stopPropagation(); setActionMenuOpen((open) => !open); }} title={t("projects.actions")} aria-label={t("projects.actions")} aria-expanded={actionMenuOpen} style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 24, height: 24, padding: 0, lineHeight: 0, border: "none", borderRadius: "var(--radius-control)", background: actionMenuOpen ? "var(--bg-selected)" : "transparent", color: actionMenuOpen ? "var(--text)" : "var(--text-dim)", cursor: "pointer" }}>
                   <MoreHorizontal size={14} strokeWidth={2} aria-hidden="true" />
                 </button>
-                <SidebarPortalMenu anchor={menuButtonRef} open={actionMenuOpen} onClose={() => setActionMenuOpen(false)} placement="above" minWidth={128}>
- <button type="button" role="menuitem" className="sidebar-menu-item" onClick={(event) => { event.stopPropagation(); setActionMenuOpen(false); setConfirmArchive(true); }} disabled={hasChildren} title={hasChildren ? t("sessionSidebar.archiveLeafOnly") : t("sessionSidebar.archive")} style={{ display: "block", width: "100%", padding: "6px 9px", border: "none", borderRadius: 6, background: "transparent", color: hasChildren ? "var(--text-dim)" : "var(--text-muted)", cursor: hasChildren ? "not-allowed" : "pointer", textAlign: "left", fontSize: 11, opacity: hasChildren ? 0.55 : 1 }}>{t("sessionSidebar.archive")}</button>
+                <SidebarPortalMenu anchor={menuButtonRef} open={actionMenuOpen} onClose={() => setActionMenuOpen(false)} placement="below" minWidth={128}>
+ <button type="button" role="menuitem" className="sidebar-menu-item" onClick={(event) => { event.stopPropagation(); setActionMenuOpen(false); void handleArchive(); }} disabled={hasChildren} title={hasChildren ? t("sessionSidebar.archiveLeafOnly") : t("sessionSidebar.archive")} style={{ display: "block", width: "100%", padding: "6px 9px", border: "none", borderRadius: 6, background: "transparent", color: hasChildren ? "var(--text-dim)" : "var(--text-muted)", cursor: hasChildren ? "not-allowed" : "pointer", textAlign: "left", fontSize: 11, opacity: hasChildren ? 0.55 : 1 }}>{t("sessionSidebar.archive")}</button>
                   <button type="button" role="menuitem" className="sidebar-menu-item" onClick={(event) => { startRename(event); setActionMenuOpen(false); }} style={{ display: "block", width: "100%", padding: "6px 9px", border: "none", borderRadius: 6, background: "transparent", color: "var(--text-muted)", cursor: "pointer", textAlign: "left", fontSize: 11 }}>{t("sessionSidebar.rename")}</button>
                   <button type="button" role="menuitem" className="sidebar-menu-item" onClick={(event) => { event.stopPropagation(); setActionMenuOpen(false); void handleDelete(); }} style={{ display: "block", width: "100%", padding: "6px 9px", border: "none", borderRadius: 6, background: "transparent", color: "var(--status-error)", cursor: "pointer", textAlign: "left", fontSize: 11 }}>{t("sessionSidebar.delete")}</button>
                 </SidebarPortalMenu>

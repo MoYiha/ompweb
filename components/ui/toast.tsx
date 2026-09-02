@@ -27,19 +27,29 @@ interface ToastData {
 interface ToastOptions {
   /** Clamp the description to 2 lines; click the description to expand it. */
   clamp?: boolean;
+  /** Auto-dismiss timeout in ms. 0 = sticky until dismissed. Defaults to provider timeout (4000). */
+  timeout?: number;
+  /** Alias for timeout, for clarity. */
+  duration?: number;
+  /** Stable id for deduplication — same id will replace existing toast instead of stacking. */
+  id?: string;
 }
 
 const manager = Toast.createToastManager<ToastData>();
 
 function add(kind: ToastKind, title: React.ReactNode, description?: React.ReactNode, options?: ToastOptions) {
-  return manager.add({
+  const timeout = options?.timeout ?? options?.duration;
+  // Base UI ToastManager types don't expose per-toast timeout, but the runtime respects it.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (manager as any).add({
+    id: options?.id,
     title,
     description,
     type: kind,
     data: { kind, clamp: options?.clamp },
+    ...(timeout !== undefined ? { timeout } : {}),
   });
 }
-
 export const toast = {
   success: (title: React.ReactNode, description?: React.ReactNode, options?: ToastOptions) =>
     add("success", title, description, options),

@@ -36,6 +36,17 @@ try {
         Start-Process -FilePath $taskkillExe -ArgumentList "/PID $($p.ProcessId) /T /F" -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue | Out-Null
     }
 } catch { }
+try {
+    # Also terminate headless service (omp-web-service.ps1) instances
+    $serviceProcs = Get-CimInstance Win32_Process -Filter "Name LIKE '%powershell%' OR Name LIKE '%pwsh%'" -ErrorAction SilentlyContinue | Where-Object { $_.ProcessId -ne $PID -and $_.CommandLine -like '*omp-web-service.ps1*' }
+    foreach ($p in $serviceProcs) {
+        Log-Message "  Stopping headless service process tree (PID $($p.ProcessId))..."
+        Start-Process -FilePath $taskkillExe -ArgumentList "/PID $($p.ProcessId) /T /F" -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue | Out-Null
+    }
+    # Delete Scheduled Task (both schtasks and PowerShell fallback)
+    try { schtasks /delete /tn "omp-web" /f 2>$null | Out-Null; Log-Message "  [OK] Removed Scheduled Task: omp-web" } catch { }
+    try { Unregister-ScheduledTask -TaskName "omp-web" -Confirm:$false -ErrorAction SilentlyContinue | Out-Null } catch { }
+} catch { }
 
 # -----------------------------------------------------------------------------
 # 2. Remove Windows Shortcuts
