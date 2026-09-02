@@ -11,7 +11,7 @@ import { ChatWindow } from "./ChatWindow";
 import { TabBar, type Tab } from "./TabBar";
 import { BranchNavigator } from "./BranchNavigator";
 import { LanguageSwitcher } from "./LanguageSwitcher";
-import { Check, CircleCheck, Gauge, History, Menu, Moon, PanelLeft, Sun, Terminal, Wand2 } from "lucide-react";
+import { Check, CircleCheck, Folder, Gauge, History, Menu, Moon, PanelLeft, Sun, Terminal, Wand2, Zap } from "lucide-react";
 import { useTheme } from "@/hooks/useTheme";
 import { formatCompactNumber, formatPercent, getCacheHitRate } from "@/lib/format";
 import { translate, useI18n } from "@/lib/i18n";
@@ -23,6 +23,11 @@ import { buildAtMentionText, buildFileAtMentionsText, buildFileLineMentionText }
 import { getInitialNavigation } from "@/lib/initial-navigation";
 import { comparableProjectPath } from "@/lib/comparable-path";
 import { showCompletionNotification } from "@/lib/browser-notifications";
+function projectLabel(projectPath: string): string {
+  const trimmed = projectPath.replace(/[\\/]+$/, "");
+  const index = Math.max(trimmed.lastIndexOf("/"), trimmed.lastIndexOf("\\"));
+  return index >= 0 ? trimmed.slice(index + 1) : trimmed;
+}
 import type { SessionInfo, SessionTreeNode } from "@/lib/types";
 import type { ChatInputHandle } from "./ChatInput";
 import type { SessionStatsInfo, GenerationSpeedInfo } from "@/lib/pi-types";
@@ -827,7 +832,6 @@ export function AppShell() {
 
   // Single active panel — only one dropdown open at a time
   const [activeTopPanel, setActiveTopPanel] = useState<"branches" | "system" | "usage" | "session" | null>(null);
-  const [topPanelPos, setTopPanelPos] = useState<{ top: number; left: number; right: number; width: number } | null>(null);
   const toggleTopPanel = useCallback((panel: "branches" | "system" | "usage" | "session") => {
     if (isMobile) setSidebarOpen(false);
     setActiveTopPanel((cur) => cur === panel ? null : panel);
@@ -935,24 +939,6 @@ export function AppShell() {
     document.body.style.userSelect = "";
   }, []);
 
-  useEffect(() => {
-    if (!activeTopPanel) return;
-    const anchor = activeTopPanel === "usage" ? usageBtnRef.current : topBarRef.current;
-    if (!anchor) return;
-    const update = () => {
-      const rect = anchor.getBoundingClientRect();
-      setTopPanelPos({
-        top: rect.bottom,
-        left: rect.left,
-        right: window.innerWidth - rect.right,
-        width: rect.width,
-      });
-    };
-    update();
-    const ro = new ResizeObserver(update);
-    ro.observe(anchor);
-    return () => ro.disconnect();
-  }, [activeTopPanel]);
 
   // Dismiss the topbar dropdowns on outside click or Escape. The Escape
   // handler stops propagation so the global Esc (abort agent) does not fire
@@ -1401,8 +1387,8 @@ export function AppShell() {
     </>
   );
   const currentProviderUsageReport = providerUsage?.reports[0] ?? null;
-  const currentProviderUsageText = currentProviderUsageReport
-    ? formatProviderUsageReport(currentProviderUsageReport, t("appShell.providerUsageNoData"))
+  const currentProviderUsageText = currentProviderUsageReport && !currentProviderUsageReport.noLimits
+    ? formatProviderUsageReport(currentProviderUsageReport, "")
     : null;
   const currentProviderUsagePercents = currentProviderUsageReport ? [
     currentProviderUsageReport.fiveHour?.percent,
@@ -1541,313 +1527,411 @@ export function AppShell() {
 
       {/* Center: chat */}
       <main style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
-        {/* Top bar: compact icon-led control bar */}
-        <div ref={topBarRef} className="shell-topbar" style={{ display: "flex", alignItems: "center", flexShrink: 0, borderBottom: "1px solid var(--border)", height: isMobile ? 44 : 36, background: "var(--bg-panel)" }}>
-        {/* Utility group: sidebar, theme, language */}
-        <div style={{ display: "flex", alignItems: "center", gap: 4, height: "100%", paddingLeft: isMobile ? 4 : 8 }}>
-          <button
-            onClick={handleSidebarToggle}
-            title={sidebarOpen ? t("appShell.hideSidebar") : t("appShell.showSidebar")}
-            aria-label={sidebarOpen ? t("appShell.hideSidebar") : t("appShell.showSidebar")}
-            className="shell-toolbar-btn ui-focus-ring"
-          >
-            {sidebarOpen ? <PanelLeft size={16} strokeWidth={1.8} aria-hidden="true" /> : <Menu size={16} strokeWidth={1.8} aria-hidden="true" />}
-          </button>
-          <button
-            onClick={(e) => {
-              const rect = e.currentTarget.getBoundingClientRect();
-              toggleTheme({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 });
-            }}
-            title={preference === "system" ? t("appShell.systemTheme") : (isDark ? t("appShell.switchToSystemTheme") : t("appShell.switchToDarkMode"))}
-            aria-label={preference === "system" ? t("appShell.systemTheme") : (isDark ? t("appShell.switchToSystemTheme") : t("appShell.switchToDarkMode"))}
-            aria-pressed={isDark}
-            className="shell-toolbar-btn ui-focus-ring"
-          >
-            {isDark ? <Sun size={16} strokeWidth={1.8} aria-hidden="true" /> : <Moon size={16} strokeWidth={1.8} aria-hidden="true" />}
-          </button>
-          <LanguageSwitcher />
-        </div>
-        {showChat && (
-          <>
-            <div className="shell-toolbar-divider" aria-hidden="true" />
-            {/* Session controls: history, generate title, branches, system */}
-            <div style={{ display: "flex", alignItems: "center", gap: 4, height: "100%" }}>
-              <button
-                onClick={handleViewFullHistory}
-                disabled={!selectedSession}
-                title={selectedSession ? t("appShell.fullHistory") : t("appShell.fullHistoryUnavailable")}
-                aria-label={t("appShell.fullHistory")}
-                className="shell-toolbar-btn ui-focus-ring"
-              >
-                <History size={16} strokeWidth={1.8} aria-hidden="true" />
-              </button>
-              {(() => {
-                const hasMessages = Boolean(
-                  selectedSession
-                  && (sessionStats?.userMessages ?? selectedSession.messageCount) > 0,
-                );
-                const disabled = !selectedSession || !hasMessages || autoNameStatus.kind === "naming";
-                const isSuccess = autoNameStatus.kind === "success";
-                const isError = autoNameStatus.kind === "error";
-                const label = autoNameStatus.kind === "naming"
-                  ? t("appShell.generating")
-                  : isSuccess
-                    ? t("appShell.titleUpdated")
-                    : isError
-                      ? t("appShell.generationFailed")
-                      : t("appShell.generateTitle");
-                const title = !selectedSession
-                  ? t("appShell.titleGenUnavailable")
-                  : !hasMessages
-                    ? t("appShell.titleGenNeedsMessage")
-                    : isError
-                      ? autoNameStatus.message
-                      : t("appShell.generateSessionTitle");
-
-                return (
-                  <button
-                    type="button"
-                    onClick={() => void handleAutoName()}
-                    disabled={disabled}
-                    title={title}
-                    aria-label={label}
-                    className="shell-toolbar-btn ui-focus-ring"
-                    style={{ opacity: autoNameStatus.kind === "naming" ? 1 : undefined }}
-                  >
-                    {autoNameStatus.kind === "naming" ? (
-                      <svg className="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                        <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2" opacity="0.25" />
-                        <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                      </svg>
-                    ) : isSuccess ? (
-                      <Check size={16} strokeWidth={1.8} aria-hidden="true" style={{ color: "var(--accent)" }} />
-                    ) : isError ? (
-                      <Wand2 size={16} strokeWidth={1.8} aria-hidden="true" style={{ color: "var(--status-error)" }} />
-                    ) : (
-                      <Wand2 size={16} strokeWidth={1.8} aria-hidden="true" />
-                    )}
-                  </button>
-                );
-              })()}
-              <BranchNavigator
-                tree={branchTree}
-                activeLeafId={branchActiveLeafId}
-                onLeafChange={handleBranchLeafChange}
-                inline
-                containerRef={topBarRef}
-                open={activeTopPanel === "branches"}
-                onToggle={() => toggleTopPanel("branches")}
-                hasSession
-              />
-              <button
-                ref={systemBtnRef}
-                onClick={handleSystemPromptToggle}
-                title={t("appShell.system")}
-                aria-label={t("appShell.system")}
-                aria-pressed={activeTopPanel === "system"}
-                className="shell-toolbar-btn ui-focus-ring"
-              >
-                <Terminal size={16} strokeWidth={1.8} aria-hidden="true" style={{ color: systemPrompt ? "var(--accent)" : undefined }} />
-              </button>
-            </div>
-          </>
-        )}
-          <div data-topbar-right-group style={{ marginLeft: "auto", display: "flex", alignItems: "center", height: "100%" }}>
-          {showChat && providerUsageVisible && (providerUsage || providerUsageLoading || providerUsageError) && (
+        {/* Top bar: 3-zone segmented control bar */}
+        <div ref={topBarRef} className="shell-topbar" style={{
+          position: "relative",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          flexShrink: 0,
+          borderBottom: "1px solid var(--border)",
+          height: isMobile ? 44 : 36,
+          background: "var(--bg-panel)",
+          padding: isMobile ? "0 4px" : "0 8px",
+          gap: 8,
+          minWidth: 0,
+        }}>
+          {/* Left Zone: Utility group (sidebar, theme, language) & session controls (history, branches, system) */}
+          <div style={{ display: "flex", alignItems: "center", gap: 4, height: "100%", flexShrink: 0 }}>
             <button
-              ref={usageBtnRef}
-              type="button"
-              data-provider-usage-trigger
-              onClick={() => toggleTopPanel("usage")}
-              title={currentProviderUsageText
-                ? t("appShell.tooltipProviderUsage", { value: currentProviderUsageText })
-                : providerUsageLoading
-                  ? t("appShell.providerUsageLoading")
-                  : providerUsageError
-                    ? t("appShell.providerUsageUnavailable")
-                    : t("appShell.providerUsageNoData")}
-              aria-label={t("appShell.providerUsageButton")}
-              aria-pressed={activeTopPanel === "usage"}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 5,
-                padding: isMobile ? "0 8px" : "0 10px",
-                height: "100%",
-                color: currentProviderUsageText ? currentProviderUsageColor : "var(--text-muted)",
-                background: activeTopPanel === "usage" ? "var(--bg-selected)" : "none",
-                border: "none",
-                fontSize: 11,
-                whiteSpace: "nowrap",
-                cursor: "pointer",
-                fontVariantNumeric: "tabular-nums",
-              }}
+              onClick={handleSidebarToggle}
+              title={sidebarOpen ? t("appShell.hideSidebar") : t("appShell.showSidebar")}
+              aria-label={sidebarOpen ? t("appShell.hideSidebar") : t("appShell.showSidebar")}
+              className="shell-toolbar-btn ui-focus-ring"
             >
-              <Gauge size={14} strokeWidth={1.8} aria-hidden="true" />
-              {!isMobile && (currentProviderUsageText ?? (providerUsageLoading
-                ? t("appShell.providerUsageLoading")
-                : providerUsageError
-                  ? t("appShell.providerUsageUnavailable")
-                  : t("appShell.providerUsageNoData")))}
+              {sidebarOpen ? <PanelLeft size={16} strokeWidth={1.8} aria-hidden="true" /> : <Menu size={16} strokeWidth={1.8} aria-hidden="true" />}
             </button>
-          )}
-          {/* Session stats and generation speed — right-aligned in top bar */}
-          {showChat && (sessionStats || contextUsage || modelCapacity || generationSpeed) && (() => {
-            const tok = sessionStats?.tokens;
-            const c = sessionStats?.cost ?? 0;
-            const costStr = c > 0 ? (c >= 0.01 ? `$${c.toFixed(2)}` : `<$0.01`) : null;
-            const cacheHitRate = tok ? getCacheHitRate(tok.input, tok.cacheRead) : null;
-            const cacheRateStr = cacheHitRate !== null ? formatPercent(cacheHitRate) : null;
-            const currentSpeedStr = generationSpeed?.current !== null && generationSpeed?.current !== undefined
-              ? `${generationSpeed.current.toFixed(1)} t/s`
-              : null;
-            const averageSpeedStr = generationSpeed?.average !== null && generationSpeed?.average !== undefined
-              ? `AVG ${generationSpeed.average.toFixed(1)} t/s`
-              : null;
+            <button
+              onClick={(e) => {
+                const rect = e.currentTarget.getBoundingClientRect();
+                toggleTheme({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 });
+              }}
+              title={preference === "system" ? t("appShell.systemTheme") : (isDark ? t("appShell.switchToSystemTheme") : t("appShell.switchToDarkMode"))}
+              aria-label={preference === "system" ? t("appShell.systemTheme") : (isDark ? t("appShell.switchToSystemTheme") : t("appShell.switchToDarkMode"))}
+              aria-pressed={isDark}
+              className="shell-toolbar-btn ui-focus-ring"
+            >
+              {isDark ? <Sun size={16} strokeWidth={1.8} aria-hidden="true" /> : <Moon size={16} strokeWidth={1.8} aria-hidden="true" />}
+            </button>
+            <LanguageSwitcher />
+            {showChat && (
+              <>
+                <div className="shell-toolbar-divider" aria-hidden="true" />
+                <button
+                  onClick={handleViewFullHistory}
+                  disabled={!selectedSession}
+                  title={selectedSession ? t("appShell.fullHistory") : t("appShell.fullHistoryUnavailable")}
+                  aria-label={t("appShell.fullHistory")}
+                  className="shell-toolbar-btn ui-focus-ring"
+                >
+                  <History size={16} strokeWidth={1.8} aria-hidden="true" />
+                </button>
+                <BranchNavigator
+                  tree={branchTree}
+                  activeLeafId={branchActiveLeafId}
+                  onLeafChange={handleBranchLeafChange}
+                  inline
+                  containerRef={topBarRef}
+                  open={activeTopPanel === "branches"}
+                  onToggle={() => toggleTopPanel("branches")}
+                  hasSession
+                />
+                <button
+                  ref={systemBtnRef}
+                  onClick={handleSystemPromptToggle}
+                  title={t("appShell.system")}
+                  aria-label={t("appShell.system")}
+                  aria-pressed={activeTopPanel === "system"}
+                  className="shell-toolbar-btn ui-focus-ring"
+                >
+                  <Terminal size={16} strokeWidth={1.8} aria-hidden="true" style={{ color: systemPrompt ? "var(--accent)" : undefined }} />
+                </button>
+              </>
+            )}
+          </div>
 
-            let ctxColor = "var(--text-muted)";
-            let ctxStr: string | null = null;
-            if (contextUsage?.contextWindow) {
-              const pct = contextUsage.percent;
-              if (pct !== null && pct > 90) ctxColor = "var(--status-error)";
-              else if (pct !== null && pct > 70) ctxColor = "var(--status-warning)";
-              ctxStr = pct !== null ? `${formatPercent(pct)} / ${formatCompactNumber(contextUsage.contextWindow)}` : `? / ${formatCompactNumber(contextUsage.contextWindow)}`;
-            }
-
-            const tooltipParts: string[] = [];
-            if (tok) {
-              tooltipParts.push(t("appShell.tooltipInput", { value: tok.input.toLocaleString(locale) }));
-              tooltipParts.push(t("appShell.tooltipOutput", { value: tok.output.toLocaleString(locale) }));
-              tooltipParts.push(t("appShell.tooltipCacheRead", { value: tok.cacheRead.toLocaleString(locale) }));
-              tooltipParts.push(t("appShell.tooltipCacheWrite", { value: tok.cacheWrite.toLocaleString(locale) }));
-              if (cacheRateStr) tooltipParts.push(t("appShell.tooltipCacheRate", { percent: cacheRateStr }));
-              if (c > 0) tooltipParts.push(t("appShell.tooltipCost", { value: c.toFixed(4) }));
-            }
-            if (modelCapacity?.maxTokens) tooltipParts.push(t("appShell.tooltipMaxOutput", { tokens: modelCapacity.maxTokens.toLocaleString(locale) }));
-            if (contextUsage?.contextWindow) {
-              const pct = contextUsage.percent;
-              tooltipParts.push(t("appShell.tooltipContext", {
-                percent: pct !== null ? pct.toFixed(1) + "%" : t("appShell.unknown"),
-                tokens: contextUsage.contextWindow.toLocaleString(locale),
-              }));
-            }
-            if (currentSpeedStr) tooltipParts.push(t("appShell.tooltipCurrentSpeed", { value: currentSpeedStr }));
-            if (averageSpeedStr) tooltipParts.push(t("appShell.tooltipAverageSpeed", { value: averageSpeedStr }));
-            const tooltip = tooltipParts.join("  |  ");
+          {/* Center Zone: Workspace & Session Breadcrumb + Auto-name action */}
+          {showChat && (() => {
+            const effectiveProject = selectedSession?.projectRoot ?? selectedSession?.cwd ?? activeCwd ?? "";
+            const sessionTitle = selectedSession?.name || selectedSession?.firstMessage || t("appShell.newSession");
+            const hasMessages = Boolean(
+              selectedSession
+              && (sessionStats?.userMessages ?? selectedSession.messageCount) > 0,
+            );
+            const wandDisabled = !selectedSession || !hasMessages || autoNameStatus.kind === "naming";
+            const wandIsSuccess = autoNameStatus.kind === "success";
+            const wandIsError = autoNameStatus.kind === "error";
+            const wandLabel = autoNameStatus.kind === "naming"
+              ? t("appShell.generating")
+              : wandIsSuccess
+                ? t("appShell.titleUpdated")
+                : wandIsError
+                  ? t("appShell.generationFailed")
+                  : t("appShell.generateTitle");
+            const wandTooltip = !selectedSession
+              ? t("appShell.titleGenUnavailable")
+              : !hasMessages
+                ? t("appShell.titleGenNeedsMessage")
+                : wandIsError
+                  ? autoNameStatus.message
+                  : t("appShell.generateSessionTitle");
 
             return (
-              <button
-                ref={sessionStatsBtnRef}
-                type="button"
-                onClick={() => toggleTopPanel("session")}
-                title={tooltip || t("appShell.sessionInfo")}
-                aria-label={t("appShell.sessionInfo")}
-                aria-pressed={activeTopPanel === "session"}
+              <div
+                className="shell-topbar-center"
                 style={{
-                  marginLeft: "auto", display: "flex", alignItems: "center", justifyContent: "center", gap: 10,
-                  paddingLeft: isMobile ? 0 : 12,
-                  // Reserve the corner for the always-visible file-panel
-                  // toggle: on mobile it is 44px wide and would otherwise
-                  // cover the session-stats button entirely.
-                  paddingRight: isMobile ? (rightPanelOpen ? 0 : 44) : rightPanelOpen ? 12 : 48,
-                  height: "100%",
-                  minWidth: isMobile ? 44 : 0,
-                  overflow: "hidden",
-                  background: activeTopPanel === "session" ? "var(--bg-selected)" : "none",
-                  border: "none",
-                  fontSize: 11, color: "var(--text-muted)",
-                  whiteSpace: "nowrap", cursor: "pointer",
-                  fontVariantNumeric: "tabular-nums",
-                  transition: "color var(--dur-fast) var(--ease-out-warm), background var(--dur-fast) var(--ease-out-warm)",
-                }}
-                onMouseEnter={(e) => {
-                  if (activeTopPanel !== "session") e.currentTarget.style.background = "var(--bg-hover)";
-                  e.currentTarget.style.color = "var(--text)";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = activeTopPanel === "session" ? "var(--bg-selected)" : "none";
-                  e.currentTarget.style.color = activeTopPanel === "session" ? "var(--text)" : "var(--text-muted)";
+                  position: "absolute",
+                  left: "50%",
+                  transform: "translateX(-50%)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  maxWidth: "min(460px, calc(100% - 380px))",
+                  pointerEvents: "none",
+                  zIndex: 10,
                 }}
               >
-                {isMobile && (
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                    <circle cx="12" cy="12" r="10" /><line x1="12" y1="16" x2="12" y2="12" /><line x1="12" y1="8" x2="12.01" y2="8" />
-                  </svg>
-                )}
-                {!isMobile && tok && tok.input > 0 && (
-                  <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                    <svg width="12" height="12" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
-                      <line x1="5" y1="8.5" x2="5" y2="1.5" /><polyline points="2 4 5 1.5 8 4" />
-                    </svg>
-                    {formatCompactNumber(tok.input)}
+                <div
+                  className="shell-topbar-breadcrumb"
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                    height: 26,
+                    padding: "0 8px",
+                    borderRadius: "var(--radius-control)",
+                    background: "var(--bg-subtle)",
+                    border: "1px solid var(--border)",
+                    fontSize: 11,
+                    color: "var(--text-muted)",
+                    whiteSpace: "nowrap",
+                    minWidth: 0,
+                    maxWidth: "min(400px, 30vw)",
+                    pointerEvents: "auto",
+                    flexShrink: 1,
+                  }}
+                >
+                  {effectiveProject ? (
+                    <>
+                      <Folder size={12} strokeWidth={1.8} style={{ opacity: 0.6, flexShrink: 0 }} aria-hidden="true" />
+                      <span
+                        style={{
+                          fontWeight: 600,
+                          color: "var(--text)",
+                          flexShrink: 0,
+                          maxWidth: 120,
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                        title={effectiveProject}
+                      >
+                        {projectLabel(effectiveProject)}
+                      </span>
+                      <span style={{ color: "var(--text-dim)", flexShrink: 0, opacity: 0.5 }}>/</span>
+                    </>
+                  ) : null}
+                  <span
+                    style={{
+                      color: "var(--text)",
+                      fontWeight: 500,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                      minWidth: 0,
+                    }}
+                    title={sessionTitle}
+                  >
+                    {sessionTitle}
                   </span>
-                )}
-                {!isMobile && tok && tok.output > 0 && (
-                  <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                    <svg width="12" height="12" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
-                      <line x1="5" y1="1.5" x2="5" y2="8.5" /><polyline points="2 6 5 8.5 8 6" />
-                    </svg>
-                    {formatCompactNumber(tok.output)}
-                  </span>
-                )}
-                {!isMobile && tok && tok.cacheRead > 0 && (
-                  <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                    <svg width="12" height="12" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M8.5 5a3.5 3.5 0 1 1-1-2.45" /><polyline points="6.5 1.5 8.5 2.5 7.5 4.5" />
-                    </svg>
-                    {formatCompactNumber(tok.cacheRead)}
-                  </span>
-                )}
-                {!isMobile && modelCapacity?.maxTokens && (
-                  <span style={{ color: "var(--text-muted)", whiteSpace: "nowrap" }}>↗ {formatCompactNumber(modelCapacity.maxTokens)}</span>
-                )}
-                {!isMobile && cacheRateStr && (
-                  <span style={{ display: "flex", alignItems: "center", gap: 4, color: "var(--text-muted)" }}>
-                    <CircleCheck size={12} strokeWidth={1.8} aria-hidden="true" />
-                    {cacheRateStr}
-                  </span>
-                )}
-                {ctxStr && (
-                  <span style={{ display: "flex", alignItems: "center", gap: 4, color: ctxColor, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    <svg width="12" height="12" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M1 9 L1 5 Q1 1 5 1 Q9 1 9 5 L9 9" /><line x1="1" y1="9" x2="9" y2="9" />
-                    </svg>
-                    {ctxStr}
-                  </span>
-                )}
-                {!isMobile && costStr && (
-                  <span style={{ display: "flex", alignItems: "center", color: "var(--text)", fontWeight: 500 }}>
-                    {costStr}
-                  </span>
-                )}
-                {!isMobile && currentSpeedStr && (
-                  <span style={{ display: "flex", alignItems: "center", gap: 4, color: "var(--text)", fontWeight: 600 }}>
-                    {currentSpeedStr}
-                  </span>
-                )}
-                {!isMobile && averageSpeedStr && (
-                  <span style={{ display: "flex", alignItems: "center", gap: 4, color: "var(--text-muted)" }}>
-                    {averageSpeedStr}
-                  </span>
-                )}
-              </button>
+                  {selectedSession && (
+                    <button
+                      type="button"
+                      onClick={() => void handleAutoName()}
+                      disabled={wandDisabled}
+                      title={wandTooltip}
+                      aria-label={wandLabel}
+                      className="ui-focus-ring"
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        width: 18,
+                        height: 18,
+                        padding: 0,
+                        marginLeft: 2,
+                        border: "none",
+                        borderRadius: 4,
+                        background: "transparent",
+                        color: wandIsSuccess ? "var(--accent)" : wandIsError ? "var(--status-error)" : "var(--text-dim)",
+                        cursor: wandDisabled ? "default" : "pointer",
+                        flexShrink: 0,
+                        opacity: autoNameStatus.kind === "naming" ? 1 : wandDisabled ? 0.35 : 0.75,
+                        transition: "color var(--dur-fast), opacity var(--dur-fast)",
+                      }}
+                    >
+                      {autoNameStatus.kind === "naming" ? (
+                        <svg className="animate-spin" width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                          <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2" opacity="0.25" />
+                          <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                        </svg>
+                      ) : wandIsSuccess ? (
+                        <Check size={12} strokeWidth={2} aria-hidden="true" />
+                      ) : (
+                        <Wand2 size={12} strokeWidth={1.8} aria-hidden="true" />
+                      )}
+                    </button>
+                  )}
+                </div>
+              </div>
             );
           })()}
+
+          {/* Right Zone: Segmented metric pills (Provider limits, Session Stats/Usage, Speed) */}
+          <div
+            data-topbar-right-group
+            style={{
+              marginLeft: "auto",
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              height: "100%",
+              paddingRight: isMobile ? (rightPanelOpen ? 0 : 44) : rightPanelOpen ? 8 : 44,
+              flexShrink: 0,
+            }}
+          >
+            {/* Provider limits pill */}
+            {showChat && providerUsageVisible && (providerUsage || providerUsageLoading || providerUsageError) && (
+              <button
+                ref={usageBtnRef}
+                type="button"
+                data-provider-usage-trigger
+                onClick={() => toggleTopPanel("usage")}
+                title={currentProviderUsageText
+                  ? t("appShell.tooltipProviderUsage", { value: currentProviderUsageText })
+                  : currentProviderUsageReport?.noLimits
+                    ? `${t("appShell.providerUsageNoData")}${activeProvider ? ` (${activeProvider})` : ""}`
+                    : providerUsageLoading
+                      ? t("appShell.providerUsageLoading")
+                      : providerUsageError
+                        ? t("appShell.providerUsageUnavailable")
+                        : t("appShell.providerUsageButton")}
+                aria-label={t("appShell.providerUsageButton")}
+                aria-pressed={activeTopPanel === "usage"}
+                className="shell-metric-pill ui-focus-ring"
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 4,
+                  height: 26,
+                  padding: currentProviderUsageText ? "0 8px" : "0 6px",
+                  borderRadius: "var(--radius-control)",
+                  border: "1px solid var(--border)",
+                  background: activeTopPanel === "usage" ? "var(--bg-selected)" : "var(--bg-subtle)",
+                  color: currentProviderUsageText ? currentProviderUsageColor : "var(--text-dim)",
+                  fontSize: 11,
+                  fontFamily: "var(--font-mono)",
+                  fontVariantNumeric: "tabular-nums",
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                  flexShrink: 0,
+                  transition: "background var(--dur-fast), border-color var(--dur-fast), color var(--dur-fast)",
+                }}
+              >
+                <Gauge size={13} strokeWidth={1.8} aria-hidden="true" />
+                {currentProviderUsageText && <span>{currentProviderUsageText}</span>}
+              </button>
+            )}
+
+            {/* Session Stats and context/cost pill */}
+            {showChat && (sessionStats || contextUsage || modelCapacity) && (() => {
+              const tok = sessionStats?.tokens;
+              const c = sessionStats?.cost ?? 0;
+              const costStr = c > 0 ? (c >= 0.01 ? `$${c.toFixed(2)}` : `<$0.01`) : null;
+              const cacheHitRate = tok ? getCacheHitRate(tok.input, tok.cacheRead) : null;
+              const cacheRateStr = cacheHitRate !== null ? formatPercent(cacheHitRate) : null;
+
+              let ctxColor = "var(--text-muted)";
+              let ctxStr: string | null = null;
+              if (contextUsage?.contextWindow) {
+                const pct = contextUsage.percent;
+                if (pct !== null && pct > 90) ctxColor = "var(--status-error)";
+                else if (pct !== null && pct > 70) ctxColor = "var(--status-warning)";
+                ctxStr = pct !== null ? `${formatPercent(pct)} / ${formatCompactNumber(contextUsage.contextWindow)}` : `? / ${formatCompactNumber(contextUsage.contextWindow)}`;
+              }
+
+              const tooltipParts: string[] = [];
+              if (tok) {
+                tooltipParts.push(t("appShell.tooltipInput", { value: tok.input.toLocaleString(locale) }));
+                tooltipParts.push(t("appShell.tooltipOutput", { value: tok.output.toLocaleString(locale) }));
+                tooltipParts.push(t("appShell.tooltipCacheRead", { value: tok.cacheRead.toLocaleString(locale) }));
+                tooltipParts.push(t("appShell.tooltipCacheWrite", { value: tok.cacheWrite.toLocaleString(locale) }));
+                if (cacheRateStr) tooltipParts.push(t("appShell.tooltipCacheRate", { percent: cacheRateStr }));
+                if (c > 0) tooltipParts.push(t("appShell.tooltipCost", { value: c.toFixed(4) }));
+              }
+              if (modelCapacity?.maxTokens) tooltipParts.push(t("appShell.tooltipMaxOutput", { tokens: modelCapacity.maxTokens.toLocaleString(locale) }));
+              if (contextUsage?.contextWindow) {
+                const pct = contextUsage.percent;
+                tooltipParts.push(t("appShell.tooltipContext", {
+                  percent: pct !== null ? pct.toFixed(1) + "%" : t("appShell.unknown"),
+                  tokens: contextUsage.contextWindow.toLocaleString(locale),
+                }));
+              }
+              const tooltip = tooltipParts.join("  |  ");
+
+              return (
+                <button
+                  ref={sessionStatsBtnRef}
+                  type="button"
+                  onClick={() => toggleTopPanel("session")}
+                  title={tooltip || t("appShell.sessionInfo")}
+                  aria-label={t("appShell.sessionInfo")}
+                  aria-pressed={activeTopPanel === "session"}
+                  className="shell-metric-pill ui-focus-ring"
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 8,
+                    height: 26,
+                    padding: "0 8px",
+                    borderRadius: "var(--radius-control)",
+                    border: "1px solid var(--border)",
+                    background: activeTopPanel === "session" ? "var(--bg-selected)" : "var(--bg-subtle)",
+                    color: "var(--text)",
+                    fontSize: 11,
+                    fontFamily: "var(--font-mono)",
+                    fontVariantNumeric: "tabular-nums",
+                    cursor: "pointer",
+                    whiteSpace: "nowrap",
+                    flexShrink: 0,
+                    transition: "background var(--dur-fast), border-color var(--dur-fast), color var(--dur-fast)",
+                  }}
+                >
+                  {ctxStr && (
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 3, color: ctxColor }}>
+                      <span style={{ fontSize: 10, opacity: 0.7 }}>⌂</span>
+                      {ctxStr}
+                    </span>
+                  )}
+                  {!isMobile && cacheRateStr && (
+                    <span className="shell-pill-extra" style={{ display: "inline-flex", alignItems: "center", gap: 3, color: "var(--text-muted)" }}>
+                      <CircleCheck size={11} strokeWidth={1.8} aria-hidden="true" />
+                      {cacheRateStr}
+                    </span>
+                  )}
+                  {costStr && (
+                    <span style={{ fontWeight: 600, color: "var(--text)" }}>
+                      {costStr}
+                    </span>
+                  )}
+                </button>
+              );
+            })()}
+
+            {/* Generation speed pill */}
+            {showChat && (() => {
+              const currentSpeedStr = generationSpeed?.current !== null && generationSpeed?.current !== undefined
+                ? `${generationSpeed.current.toFixed(1)} t/s`
+                : null;
+              const averageSpeedStr = generationSpeed?.average !== null && generationSpeed?.average !== undefined
+                ? `AVG ${generationSpeed.average.toFixed(1)} t/s`
+                : null;
+              if (!currentSpeedStr && !averageSpeedStr) return null;
+              const speedTitle = currentSpeedStr
+                ? t("appShell.tooltipCurrentSpeed", { value: currentSpeedStr })
+                : t("appShell.tooltipAverageSpeed", { value: averageSpeedStr! });
+
+              return (
+                <div
+                  title={speedTitle}
+                  className="shell-metric-pill shell-pill-extra"
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 4,
+                    height: 26,
+                    padding: "0 8px",
+                    borderRadius: "var(--radius-control)",
+                    border: "1px solid var(--border)",
+                    background: "var(--bg-subtle)",
+                    color: currentSpeedStr ? "var(--accent)" : "var(--text-muted)",
+                    fontSize: 11,
+                    fontFamily: "var(--font-mono)",
+                    fontVariantNumeric: "tabular-nums",
+                    whiteSpace: "nowrap",
+                    cursor: "default",
+                    flexShrink: 0,
+                  }}
+                >
+                  <Zap size={11} strokeWidth={2} aria-hidden="true" style={{ color: currentSpeedStr ? "var(--accent)" : "var(--text-dim)" }} />
+                  <span style={{ fontWeight: currentSpeedStr ? 600 : 400 }}>
+                    {currentSpeedStr ?? averageSpeedStr}
+                  </span>
+                </div>
+              );
+            })()}
           </div>
-          {/* Top panel dropdown — shared, only one active at a time. The
-              branch panel renders inside BranchNavigator itself; never mount
-              an empty fixed layer for it (it would sit over the top-bar
-              region and swallow clicks). */}
-          {(activeTopPanel === "system" || activeTopPanel === "usage" || activeTopPanel === "session") && topPanelPos && (
+          {(activeTopPanel === "system" || activeTopPanel === "usage" || activeTopPanel === "session") && (
             <div data-top-panel className="dropdown-surface" style={{
-              position: "fixed",
-              top: topPanelPos.top,
-              right: activeTopPanel === "usage" ? topPanelPos.right : 12,
-              left: "auto",
+              position: "absolute",
+              top: "calc(100% + 4px)",
+              left: activeTopPanel === "system" ? (isMobile ? 4 : 8) : "auto",
+              right: activeTopPanel === "system" ? "auto" : (isMobile ? 4 : 8),
               width: "auto",
-              minWidth: 360,
+              minWidth: activeTopPanel === "usage" ? (isMobile ? undefined : 480) : activeTopPanel === "session" ? (isMobile ? undefined : 580) : (isMobile ? undefined : 420),
               maxWidth: "min(680px, calc(100vw - 24px))",
-              maxHeight: `min(70vh, calc(100dvh - ${topPanelPos.top}px - 12px))`,
+              maxHeight: "min(70vh, calc(100dvh - 56px))",
               overflowY: "auto",
               overflowX: "hidden",
               zIndex: 500,
@@ -1857,56 +1941,150 @@ export function AppShell() {
                   background: "var(--bg-panel)",
                   borderBottom: "1px solid var(--border)",
                   boxShadow: "var(--shadow-pop)",
-                  padding: "12px 16px",
-                  minWidth: isMobile ? undefined : 520,
+                  padding: "14px 16px",
+                  minWidth: isMobile ? undefined : 500,
+                  maxWidth: "min(640px, calc(100vw - 24px))",
                 }}>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, marginBottom: 10 }}>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text)" }}>{t("appShell.sectionProviderUsage")}</div>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, marginBottom: 12 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <Gauge size={14} strokeWidth={2} style={{ color: "var(--accent)" }} aria-hidden="true" />
+                      <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text)" }}>{t("appShell.sectionProviderUsage")}</div>
+                    </div>
                     {allProviderUsageLoading && allProviderUsage && (
                       <span style={{ fontSize: 11, color: "var(--text-dim)" }}>{t("appShell.providerUsageLoading")}</span>
                     )}
                   </div>
                   {allProviderUsage?.reports.length ? (
-                    <div style={{ display: "grid", gap: 8, fontSize: 12, lineHeight: 1.5, fontFamily: "var(--font-mono)" }}>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 10, fontSize: 12, fontFamily: "var(--font-mono)" }}>
                       {allProviderUsage.reports.map((report, index) => {
                         const account = report.accountLabel ?? t("appShell.account", { number: report.accountIndex ?? index + 1 });
-                        const scope = [
-                          report.provider,
-                          account,
-                          report.modelId ?? t("appShell.allModels"),
-                          report.tier ? `tier: ${report.tier}` : null,
-                          report.plan ? `plan: ${report.plan}` : null,
-                        ].filter(Boolean).join(" · ");
-                        const percents = [
-                          report.fiveHour?.percent,
-                          report.sevenDay?.percent,
-                          report.monthly?.percent,
-                        ].filter((percent): percent is number => percent !== undefined);
+                        const key = `${report.provider}:${account}:${report.modelId ?? "all"}:${index}`;
                         return (
-                          <div key={`${scope}:${index}`} style={{ display: "grid", gridTemplateColumns: "minmax(190px, 1fr) auto", gap: 16, alignItems: "baseline" }}>
-                            <div style={{ color: "var(--text-dim)", overflowWrap: "anywhere" }}>{scope}</div>
-                            <div style={{ color: percents.length ? usageTone(Math.max(...percents)) : "var(--text-muted)", whiteSpace: "nowrap", textAlign: "right" }}>
-                              {formatProviderUsageReport(report, t("appShell.providerUsageNoData"))}
+                          <div
+                            key={key}
+                            style={{
+                              padding: "10px 12px",
+                              borderRadius: "var(--radius-card)",
+                              background: "var(--bg-subtle)",
+                              border: "1px solid var(--border)",
+                              display: "flex",
+                              flexDirection: "column",
+                              gap: 8,
+                            }}
+                          >
+                            {/* Card Header: Provider badge, account, plan, model */}
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                <span style={{
+                                  fontWeight: 700,
+                                  fontSize: 11,
+                                  color: "var(--text)",
+                                  background: "var(--bg-panel)",
+                                  border: "1px solid var(--border)",
+                                  padding: "2px 6px",
+                                  borderRadius: 4,
+                                }}>
+                                  {report.provider}
+                                </span>
+                                <span style={{ fontSize: 11, color: "var(--text)", fontWeight: 500 }}>
+                                  {account}
+                                </span>
+                                {report.tier && (
+                                  <span style={{ fontSize: 10, color: "var(--text-dim)", background: "var(--bg-panel)", border: "1px solid var(--border)", padding: "1px 5px", borderRadius: 3 }}>
+                                    {report.tier}
+                                  </span>
+                                )}
+                              </div>
+                              <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--text-dim)" }}>
+                                {report.plan && <span style={{ color: "var(--text-muted)" }}>{report.plan}</span>}
+                                {report.modelId && <span>· {report.modelId}</span>}
+                              </div>
                             </div>
+
+                            {/* Quota Limits or Unlimited status */}
+                            {report.noLimits ? (
+                              <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--text-dim)", padding: "2px 0" }}>
+                                <span style={{ display: "inline-block", width: 6, height: 6, borderRadius: "50%", background: "var(--accent)" }} />
+                                <span>{t("appShell.providerUsageNoData")}</span>
+                              </div>
+                            ) : (
+                              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 8 }}>
+                                {report.fiveHour && (() => {
+                                  const pct = Math.round(report.fiveHour.percent);
+                                  const reset = report.fiveHour.resetMinutes !== undefined ? formatUsageReset(report.fiveHour.resetMinutes, "minutes") : null;
+                                  const tone = usageTone(pct);
+                                  return (
+                                    <div style={{ background: "var(--bg-panel)", padding: "6px 8px", borderRadius: 6, border: "1px solid var(--border)" }}>
+                                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4, fontSize: 10 }}>
+                                        <span style={{ color: "var(--text-dim)", fontWeight: 600 }}>5h Window</span>
+                                        <span style={{ color: tone, fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>{pct}%</span>
+                                      </div>
+                                      <div style={{ height: 4, borderRadius: 2, background: "var(--border)", overflow: "hidden" }}>
+                                        <div style={{ height: "100%", width: `${Math.min(100, pct)}%`, background: tone, borderRadius: 2, transition: "width 0.3s" }} />
+                                      </div>
+                                      {reset && <div style={{ fontSize: 9, color: "var(--text-dim)", marginTop: 4, textAlign: "right" }}>resets {reset}</div>}
+                                    </div>
+                                  );
+                                })()}
+
+                                {report.sevenDay && (() => {
+                                  const pct = Math.round(report.sevenDay.percent);
+                                  const reset = report.sevenDay.resetHours !== undefined ? formatUsageReset(report.sevenDay.resetHours, "hours") : null;
+                                  const tone = usageTone(pct);
+                                  return (
+                                    <div style={{ background: "var(--bg-panel)", padding: "6px 8px", borderRadius: 6, border: "1px solid var(--border)" }}>
+                                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4, fontSize: 10 }}>
+                                        <span style={{ color: "var(--text-dim)", fontWeight: 600 }}>7d Window</span>
+                                        <span style={{ color: tone, fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>{pct}%</span>
+                                      </div>
+                                      <div style={{ height: 4, borderRadius: 2, background: "var(--border)", overflow: "hidden" }}>
+                                        <div style={{ height: "100%", width: `${Math.min(100, pct)}%`, background: tone, borderRadius: 2, transition: "width 0.3s" }} />
+                                      </div>
+                                      {reset && <div style={{ fontSize: 9, color: "var(--text-dim)", marginTop: 4, textAlign: "right" }}>resets {reset}</div>}
+                                    </div>
+                                  );
+                                })()}
+
+                                {report.monthly && (() => {
+                                  const pct = Math.floor(report.monthly.percent);
+                                  const reset = report.monthly.resetHours !== undefined ? formatUsageReset(report.monthly.resetHours, "hours") : null;
+                                  const tone = usageTone(pct);
+                                  return (
+                                    <div style={{ background: "var(--bg-panel)", padding: "6px 8px", borderRadius: 6, border: "1px solid var(--border)" }}>
+                                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4, fontSize: 10 }}>
+                                        <span style={{ color: "var(--text-dim)", fontWeight: 600 }}>Monthly</span>
+                                        <span style={{ color: tone, fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>{pct}%</span>
+                                      </div>
+                                      <div style={{ height: 4, borderRadius: 2, background: "var(--border)", overflow: "hidden" }}>
+                                        <div style={{ height: "100%", width: `${Math.min(100, pct)}%`, background: tone, borderRadius: 2, transition: "width 0.3s" }} />
+                                      </div>
+                                      {reset && <div style={{ fontSize: 9, color: "var(--text-dim)", marginTop: 4, textAlign: "right" }}>resets {reset}</div>}
+                                    </div>
+                                  );
+                                })()}
+                              </div>
+                            )}
                           </div>
                         );
                       })}
                     </div>
                   ) : allProviderUsageLoading ? (
-                    <div style={{ fontSize: 12, color: "var(--text-muted)", fontStyle: "italic" }}>{t("appShell.providerUsageLoading")}</div>
+                    <div style={{ fontSize: 12, color: "var(--text-muted)", fontStyle: "italic", padding: "8px 0" }}>{t("appShell.providerUsageLoading")}</div>
                   ) : allProviderUsageError ? (
-                    <div style={{ fontSize: 12, color: "var(--status-error)", fontStyle: "italic" }}>{t("appShell.providerUsageUnavailable")}</div>
+                    <div style={{ fontSize: 12, color: "var(--status-error)", fontStyle: "italic", padding: "8px 0" }}>{t("appShell.providerUsageUnavailable")}</div>
                   ) : allProviderUsage ? (
-                    <div style={{ fontSize: 12, color: "var(--text-muted)", fontStyle: "italic" }}>{t("appShell.providerUsageNoData")}</div>
+                    <div style={{ fontSize: 12, color: "var(--text-muted)", fontStyle: "italic", padding: "8px 0" }}>{t("appShell.providerUsageNoData")}</div>
                   ) : (
-                    <div style={{ fontSize: 12, color: "var(--text-muted)", fontStyle: "italic" }}>{t("appShell.providerUsageLoading")}</div>
+                    <div style={{ fontSize: 12, color: "var(--text-muted)", fontStyle: "italic", padding: "8px 0" }}>{t("appShell.providerUsageLoading")}</div>
                   )}
                 </div>
               )}
               {activeTopPanel === "system" && (
-                <div style={{
+                <div className="session-info-popover" style={{
                   background: "var(--bg-panel)",
                   borderBottom: "1px solid var(--border)",
+                  boxShadow: "var(--shadow-pop)",
+                  minWidth: isMobile ? undefined : 420,
                 }}>
                   {systemPrompt ? (
                     <div style={{
