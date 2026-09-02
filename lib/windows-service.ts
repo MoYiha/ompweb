@@ -261,7 +261,7 @@ export async function isTrayProcessRunning(): Promise<boolean> {
         "-ExecutionPolicy",
         "Bypass",
         "-Command",
-        '$procs = Get-CimInstance Win32_Process -Filter "Name LIKE \'%powershell%\' OR Name LIKE \'%pwsh%\'" -ErrorAction SilentlyContinue | Where-Object { $_.ProcessId -ne $PID -and ($_.CommandLine -like \'*omp-web-tray.ps1*\' -or $_.CommandLine -like \'*omp-web-service.ps1*\') }; ($procs | Measure-Object).Count',
+        '$procs = Get-CimInstance Win32_Process -Filter "Name LIKE \'%powershell%\' OR Name LIKE \'%pwsh%\' OR Name LIKE \'%omp-web-tray%\'" -ErrorAction SilentlyContinue | Where-Object { $_.ProcessId -ne $PID -and ($_.CommandLine -like \'*omp-web-tray.ps1*\' -or $_.CommandLine -like \'*omp-web-service.ps1*\' -or $_.CommandLine -like \'*omp-web-tray.exe*\') }; ($procs | Measure-Object).Count',
       ],
       { timeout: 4000, env: getWindowsExecutionEnv(), windowsHide: true }
     );
@@ -474,7 +474,6 @@ export async function startTrayService(options: { openBrowser?: boolean } = {}):
 
   // Prefer Scheduled Task (headless service) if it exists — more reliable than hidden wscript.
   try {
-    const psExe = resolvePowerShellBin();
     // Check if task exists: schtasks /query returns 0 if found.
     try {
       await execFileAsync("schtasks.exe", ["/query", "/tn", "omp-web"], { timeout: 3000, env: getWindowsExecutionEnv(), windowsHide: true });
@@ -492,6 +491,37 @@ export async function startTrayService(options: { openBrowser?: boolean } = {}):
       // Task doesn't exist or /run failed, fall through to wscript fallback.
     }
   } catch { }
+  // Native tray exe (dotnet WinForms) — most reliable, no hidden wscript heap.
+  const nativeExe = path.join(getRepoRoot(), "bin", "omp-web-tray.exe");
+  if (existsSync(nativeExe)) {
+    try {
+      const nativeArgs: string[] = [];
+      if (options.openBrowser) nativeArgs.push("-OpenBrowser");
+      const child = spawn(nativeExe, nativeArgs, {
+        cwd: getRepoRoot(),
+        detached: true,
+        stdio: "ignore",
+        windowsHide: true,
+        env: getWindowsExecutionEnv(),
+      });
+      let settled = false;
+      child.on("error", () => { if (!settled) settled = true; });
+      child.unref();
+      await new Promise<void>((r) => setTimeout(r, 300));
+      if (!child.killed) {
+        invalidateTrayRunningCache();
+        if (options.openBrowser) {
+          try {
+            const cfg = await loadWebServiceConfig();
+            const url = `http://${cfg.hostname || "127.0.0.1"}:${cfg.port}`;
+            await execFileAsync("cmd.exe", ["/c", "start", "", url], { timeout: 2000, windowsHide: true } as unknown as { timeout: number; windowsHide: boolean });
+          } catch { }
+        }
+        return { success: true };
+      }
+    } catch { }
+  }
+
 
   const repoRoot = getRepoRoot();
   const launchVbs = path.join(repoRoot, "scripts", "windows", "launch-tray.vbs");
@@ -553,12 +583,16 @@ export async function stopTrayService(): Promise<{ success: boolean; message?: s
     } catch { }
     const taskkillExe = resolveTaskkillBin();
     const psCommand = `
-      $trayProcs = Get-CimInstance Win32_Process -Filter "Name LIKE '%powershell%' OR Name LIKE '%pwsh%'" -ErrorAction SilentlyContinue | Where-Object { $_.ProcessId -ne $PID -and ($_.CommandLine -like '*omp-web-tray.ps1*' -or $_.CommandLine -like '*omp-web-service.ps1*') }
+      $trayProcs = Get-CimInstance Win32_Process -Filter "Name LIKE '%powershell%' OR Name LIKE '%pwsh%' OR Name LIKE '%omp-web-tray%'" -ErrorAction SilentlyContinue | Where-Object { $_.ProcessId -ne $PID -and ($_.CommandLine -like '*omp-web-tray.ps1*' -or $_.CommandLine -like '*omp-web-service.ps1*' -or $_.CommandLine -like '*omp-web-tray.exe*') }
       foreach ($p in $trayProcs) {
           Start-Process -FilePath '${taskkillExe.replace(/'/g, "''")}' -ArgumentList "/PID $($p.ProcessId) /T /F" -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue | Out-Null
       }
+      # Also kill native tray exe directly by name (in case CommandLine is empty)
+      $nativeProcs = Get-CimInstance Win32_Process -Filter "Name = 'omp-web-tray.exe'" -ErrorAction SilentlyContinue
+      foreach ($p in $nativeProcs) {
+          Start-Process -FilePath '${taskkillExe.replace(/'/g, "''")}' -ArgumentList "/PID $($p.ProcessId) /T /F" -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue | Out-Null
+      }
       # Also kill orphaned node servers on the service port
-      $cfg = Get-Content "$env:USERPROFILE\\.omp\\agent\\web-service.json" -Raw -ErrorAction SilentlyContinue | ConvertFrom-Json -ErrorAction SilentlyContinue
       $port = if ($cfg -and $cfg.port) { [int]$cfg.port } else { 30177 }
       $conns = Get-NetTCPConnection -LocalPort $port -ErrorAction SilentlyContinue | Where-Object { $_.State -eq "Listen" }
       foreach ($c in $conns) {

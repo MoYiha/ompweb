@@ -158,18 +158,25 @@ $wscriptExe = Join-Path $env:SystemRoot "System32\wscript.exe"
 if (!(Test-Path $wscriptExe)) {
     $wscriptExe = "wscript.exe"
 }
+$nativeExe = Join-Path $RepoRoot "bin\omp-web-tray.exe"
+$useNative = Test-Path $nativeExe
 # Desktop Shortcut
 $desktopDir = [System.Environment]::GetFolderPath([System.Environment+SpecialFolder]::Desktop)
 $desktopLnk = Join-Path $desktopDir "omp-web.lnk"
 try {
     $sc = $wsh.CreateShortcut($desktopLnk)
-    $sc.TargetPath = $wscriptExe
-    $sc.Arguments = "`"$LaunchVbs`" -OpenBrowser"
+    if ($useNative) {
+        $sc.TargetPath = $nativeExe
+        $sc.Arguments = "-OpenBrowser"
+    } else {
+        $sc.TargetPath = $wscriptExe
+        $sc.Arguments = "`"$LaunchVbs`" -OpenBrowser"
+    }
     $sc.WorkingDirectory = $RepoRoot
     if (Test-Path $IcoPath) { $sc.IconLocation = "$IcoPath,0" }
     $sc.Description = "Open omp-web AI Coding Agent Web Interface"
     $sc.Save()
-    Log-Message "  [OK] Desktop shortcut created: $desktopLnk"
+    Log-Message "  [OK] Desktop shortcut created: $desktopLnk $(if ($useNative) { '(native tray)' } else { '' })"
 } catch {
     Log-Message "  [FAIL] Failed to create desktop shortcut: $($_.Exception.Message)"
 }
@@ -179,13 +186,18 @@ $programsDir = [System.Environment]::GetFolderPath([System.Environment+SpecialFo
 $startMenuLnk = Join-Path $programsDir "omp-web.lnk"
 try {
     $sc = $wsh.CreateShortcut($startMenuLnk)
-    $sc.TargetPath = $wscriptExe
-    $sc.Arguments = "`"$LaunchVbs`" -OpenBrowser"
+    if ($useNative) {
+        $sc.TargetPath = $nativeExe
+        $sc.Arguments = "-OpenBrowser"
+    } else {
+        $sc.TargetPath = $wscriptExe
+        $sc.Arguments = "`"$LaunchVbs`" -OpenBrowser"
+    }
     $sc.WorkingDirectory = $RepoRoot
     if (Test-Path $IcoPath) { $sc.IconLocation = "$IcoPath,0" }
     $sc.Description = "omp-web System Tray & Web Interface"
     $sc.Save()
-    Log-Message "  [OK] Start Menu shortcut created: $startMenuLnk"
+    Log-Message "  [OK] Start Menu shortcut created: $startMenuLnk $(if ($useNative) { '(native tray)' } else { '' })"
 } catch {
     Log-Message "  [FAIL] Failed to create Start Menu shortcut: $($_.Exception.Message)"
 }
@@ -196,13 +208,18 @@ $startupLnk = Join-Path $startupDir "omp-web-tray.lnk"
 if (!$NoAutostart) {
     try {
         $sc = $wsh.CreateShortcut($startupLnk)
-        $sc.TargetPath = $wscriptExe
-        $sc.Arguments = "`"$LaunchVbs`" -Startup"
+        if ($useNative) {
+            $sc.TargetPath = $nativeExe
+            $sc.Arguments = "-Startup"
+        } else {
+            $sc.TargetPath = $wscriptExe
+            $sc.Arguments = "`"$LaunchVbs`" -Startup"
+        }
         $sc.WorkingDirectory = $RepoRoot
         if (Test-Path $IcoPath) { $sc.IconLocation = "$IcoPath,0" }
         $sc.Description = "omp-web Background Tray Service"
         $sc.Save()
-        Log-Message "  [OK] Windows Startup shortcut created: $startupLnk"
+        Log-Message "  [OK] Windows Startup shortcut created: $startupLnk $(if ($useNative) { '(native tray)' } else { '' })"
     } catch {
         Log-Message "  [FAIL] Failed to create Startup shortcut: $($_.Exception.Message)"
     }
