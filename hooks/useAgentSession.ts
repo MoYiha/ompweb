@@ -2042,20 +2042,30 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         const selectedModel = newSessionModel;
         const existingSid = sessionIdRef.current ?? await ensuringNewSessionRef.current;
         const sid = existingSid ?? await ensureNewSession();
+        // Spawning takes seconds: the user may have opened another chat while
+        // it was in flight (this instance is unmounted). Deliver their prompt
+        // in the background, but never promote — switching the fresh chat
+        // into this session's history is the "new chat shows old history" bug.
+        const ownerGone = !hookAliveRef.current;
 
         if (sid) {
           sentSessionId = sid;
           // omp assigns the real id before the first prompt finishes. Promote
           // now so the sidebar can show this active session during streaming.
-          promoteNewSession(1, message);
+          if (!ownerGone) promoteNewSession(1, message);
           if (selectedModel) {
             setPendingModel(selectedModel);
             if (existingSid) {
               await sendAgentCommand(sid, { type: "set_model", provider: selectedModel.provider, modelId: selectedModel.modelId });
             }
           }
-          await ensureEventsConnected(sid);
-          void refreshSubagentRoster(sid);
+          // No UI left to update on a dead instance — and attaching an
+          // EventSource now would leak it, since this instance's unmount
+          // cleanup already ran.
+          if (!ownerGone) {
+            await ensureEventsConnected(sid);
+            void refreshSubagentRoster(sid);
+          }
           await sendAgentCommand(sid, {
             type: "prompt",
             message,
@@ -2186,8 +2196,12 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         command,
         excludeFromContext,
       });
-      await loadSession(sid);
-      promoteNewSession(1, inputText);
+      // Same abandonment rule as handleSend: navigating away mid-spawn must
+      // not pull the fresh chat into this session's history.
+      if (hookAliveRef.current) {
+        await loadSession(sid);
+        promoteNewSession(1, inputText);
+      }
     } catch (e) {
       console.error("Failed to execute shell command:", e);
       addNotice({ type: "error", message: e instanceof Error ? e.message : String(e) });
@@ -2230,6 +2244,17 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       });
       const { cancelled, newSessionId } = result ?? {};
       if (!cancelled && newSessionId) {
+        // The forked child keeps its spawn flags: carry the advisor choice to
+        // the new id, or the toggle flips off on switch and the next prompt
+        // respawns the fork without --advisor.
+        if (advisorEnabled) {
+          setSessionAdvisorSpawn(newSessionId, true);
+          try {
+            localStorage.setItem(`omp-advisor-enabled:${newSessionId}`, "true");
+          } catch {
+            // In-memory registry still applies for this page load.
+          }
+        }
         onSessionForked?.(newSessionId);
       }
     } catch (e) {
@@ -2237,7 +2262,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     } finally {
       setForkingEntryId(null);
     }
-  }, [onSessionForked]);
+  }, [advisorEnabled, onSessionForked]);
 
   // omp's RPC protocol has no navigate-within-tree command, so branch
   const handleNavigate = useCallback(async (entryId: string): Promise<boolean> => {

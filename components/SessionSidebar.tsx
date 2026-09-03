@@ -1137,7 +1137,7 @@ export const SessionSidebar = memo(function SessionSidebar({ selectedSessionId, 
           onClose={() => setLaunchConfigProject(null)}
           onSave={async (launchConfig) => {
             await handleUpdateProjectPresentation(launchConfigProject.path, { launchConfig });
-            toast.info("工作区启动参数已保存；下次启动或重新加载 omp 会生效。");
+            toast.info(t("sessionSidebar.launchConfigSaved"));
           }}
         />
       )}

@@ -88,7 +88,7 @@ export const ChatMinimap = memo(function ChatMinimap({ messages, scrollContainer
   const allMessagesRef = useRef(allMessages);
   allMessagesRef.current = allMessages;
 
-  // --- 仅更新视口比例，不读取 DOM ---
+  // --- Viewport ratio only, no DOM reads ---
   const updateScroll = useCallback(() => {
     const scrollEl = scrollContainer.current;
     if (!scrollEl) return;
@@ -110,10 +110,10 @@ export const ChatMinimap = memo(function ChatMinimap({ messages, scrollContainer
     }
   }, [scrollContainer]);
 
-  // --- 节流 DOM 测量（仅消息变化/尺寸变化时触发，最多 150ms 一次）---
+  // --- Throttled DOM measurement (message/resize changes only, at most once per 150ms) ---
   const measureThrottleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const measureNodes = useCallback(() => {
-    // 节流：150ms 内忽略重复调用
+    // Coalesce: ignore repeat calls within 150ms
     if (measureThrottleRef.current) return;
     measureThrottleRef.current = setTimeout(() => {
       measureThrottleRef.current = null;
@@ -152,7 +152,7 @@ export const ChatMinimap = memo(function ChatMinimap({ messages, scrollContainer
     }, 150);
   }, [scrollContainer, messageRefs]);
 
-  // scroll 事件 → 只更新视口，不碰 DOM。rAF-coalesce like the mousemove
+  // scroll events update the viewport only, never touch the DOM. rAF-coalesce like the mousemove
   // handler: writing three state values on every scroll event re-renders all
   // nodes + tooltips dozens of times per second.
   const scrollRafRef = useRef<number | null>(null);

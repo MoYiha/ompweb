@@ -80,6 +80,10 @@ export async function GET(request: Request) {
       }),
     };
     const sessionId = params.get("sessionId");
+    // Advisor opinion for a fresh spawn only (same ?advisor=1 convention as
+    // /api/agent/[id]): an alive child is reused as-is below, never replaced —
+    // listing servers must stay side-effect-free.
+    const advisor = params.get("advisor") === "1";
     let liveServers: ReturnType<typeof parseMcpListOutput> | undefined;
     let liveError: string | undefined;
     if (sessionId) {
@@ -90,9 +94,10 @@ export async function GET(request: Request) {
           if (!sessionFile) throw new Error("Session not found");
           const header = readSessionHeader(sessionFile);
           const { cwd } = resolveSpawnCwdResult(header?.cwd);
-          // No advisor opinion: this spawn is a side effect of listing MCP
-          // servers and must not replace a child spawned with --advisor.
-          ({ session } = await startRpcSession(sessionId, sessionFile, cwd, undefined, undefined, header?.cwd));
+          // Fresh spawn only (an alive child is reused above): apply the
+          // caller's advisor opinion so a racing prompt doesn't inherit a
+          // wrong-flag child for its whole turn.
+          ({ session } = await startRpcSession(sessionId, sessionFile, cwd, undefined, advisor, header?.cwd));
         }
         liveServers = mergeMcpServers(parseMcpListOutput(await session.getMcpList()), inventory);
       } catch (error) {

@@ -5,8 +5,8 @@
  *
  * Usage anywhere (React or not):
  *   import { toast } from "./ui/toast";
- *   toast.success("已保存"); toast.error("保存失败", "请重试");
- *   toast.info("..."); toast.success("任务完成");
+ *   toast.success("Saved"); toast.error("Save failed", "Please retry");
+ *   toast.info("..."); toast.success("Task complete");
  *
  * Mount <ToastProvider> once near the app root (AppShell).
  */

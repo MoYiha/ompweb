@@ -747,9 +747,21 @@ export function AppShell() {
     e.preventDefault();
     const startX = e.clientX;
     const startWidth = sidebarWidth;
+    // Interface Scale (html[data-ui-scale] zoom) leaves clientX in viewport
+    // pixels while the sidebar width is zoomed layout pixels: scale the drag
+    // delta so the edge tracks the pointer at any zoom (same --ui-scale
+    // ground truth as the zoom-aware menus in SessionSidebar-chrome).
+    let uiScale = 1;
+    try {
+      const raw = getComputedStyle(document.documentElement).getPropertyValue("--ui-scale");
+      const value = parseFloat(raw);
+      if (Number.isFinite(value) && value > 0) uiScale = value;
+    } catch {
+      // SSR/unavailable: fall back to unscaled math.
+    }
     setSidebarResizing(true);
     const onMove = (ev: MouseEvent) => {
-      const next = clampSidebarWidth(startWidth + (ev.clientX - startX));
+      const next = clampSidebarWidth(startWidth + (ev.clientX - startX) / uiScale);
       // Write the CSS variable straight to the DOM: the flex row follows the
       // pointer without re-rendering the whole AppShell on every mousemove.
       sidebarContainerRef.current?.style.setProperty("--sidebar-width", `${next}px`);

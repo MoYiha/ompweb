@@ -1373,7 +1373,7 @@ export function notifyRunningChange({ refreshSessionList = false }: { refreshSes
   }
 }
 
-/** 获取工作区注册的启动配置；未注册项目不附加配置。 */
+/** Look up the workspace-registered launch config; unregistered projects attach none. */
 function launchConfigForCwd(cwd: string): ProjectLaunchConfig | undefined {
   let canonical = cwd;
   try { canonical = realpathSync(cwd); } catch {}
@@ -1407,6 +1407,11 @@ export async function startRpcSession(
   const registry = getRegistry();
   const locks = getLocks();
   launchConfig = launchConfig ?? launchConfigForCwd(cwd);
+  // Union semantics, matching the spawn below and the wrapper identity:
+  // workspace advisor=true forces the flag on. The gate must compare this
+  // same effective value — comparing the raw toggle would destroy+respawn a
+  // workspace-forced child on every toggle-off prompt.
+  const effectiveAdvisor = advisor === true || launchConfig?.advisor === true;
 
   const existing = registry.get(sessionId);
   if (existing?.isAlive()) {
@@ -1416,7 +1421,7 @@ export async function startRpcSession(
     // children are kept (a mid-run swap would drop in-flight work) and pick
     // the new flag up at the next natural respawn; callers that pass no
     // advisor opinion (undefined) simply reuse whatever is running.
-    if (advisor === undefined || existing.advisorSpawned === advisor || existing.isRunning()) {
+    if (advisor === undefined || existing.advisorSpawned === effectiveAdvisor || existing.isRunning()) {
       return { session: existing, realSessionId: sessionId };
     }
     await existing.destroyAndWait();

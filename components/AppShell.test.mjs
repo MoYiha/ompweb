@@ -23,3 +23,11 @@ test("top bar renders 3-zone layout with center breadcrumb and segmented metric 
   assert.match(source, /position:\s*"absolute",\s*top:\s*"calc\(100% \+ 4px\)"/);
   assert.match(source, /left:\s*activeTopPanel === "system"\s*\?\s*\(isMobile \? 4 : 8\)\s*:\s*"auto"/);
 });
+
+test("sidebar drag scales pointer deltas by the interface zoom", async () => {
+  const source = await readFile(new URL("./AppShell.tsx", import.meta.url), "utf8");
+  // clientX is viewport pixels while --sidebar-width is zoomed layout pixels;
+  // without the correction the edge overshoots at 110/120% scale.
+  assert.match(source, /--ui-scale/);
+  assert.match(source, /\(ev\.clientX - startX\) \/ uiScale/);
+});

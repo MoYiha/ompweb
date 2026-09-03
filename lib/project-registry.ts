@@ -29,7 +29,7 @@ export interface ProjectRegistryEntry {
   alias?: string;
   /** Explicit sidebar position; lower values appear first. */
   sortOrder?: number;
-  /** 工作区级 omp 启动配置。 */
+  /** Workspace-level omp launch configuration. */
   launchConfig?: ProjectLaunchConfig;
 }
 
@@ -68,7 +68,7 @@ export function isReservedLaunchArg(arg: string): boolean {
   return RESERVED_LAUNCH_ARGS[arg] === true || RESERVED_LAUNCH_ARG_PREFIXES.some((prefix) => arg.startsWith(prefix));
 }
 
-/** 解析磁盘注册表中的启动配置；非法字段安全忽略。 */
+/** Parse the on-disk registry's launch config; invalid fields are safely ignored. */
 function parseLaunchConfig(item: Record<string, unknown>): ProjectLaunchConfig | undefined {
   const raw = item.launchConfig;
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;

@@ -53,7 +53,17 @@ export function McpConfig({ cwd, sessionId }: { cwd: string | null; sessionId?: 
     try {
       const params = new URLSearchParams();
       if (cwd) params.set("cwd", cwd);
-      if (sessionId) params.set("sessionId", sessionId);
+      if (sessionId) {
+        params.set("sessionId", sessionId);
+        // Fresh-spawn opinion for the MCP route (same localStorage key the
+        // chat-switch effect reads): without it a spawn here plants a
+        // non-advisor child that a concurrent prompt then reuses.
+        try {
+          if (localStorage.getItem(`omp-advisor-enabled:${sessionId}`) === "true") params.set("advisor", "1");
+        } catch {
+          // Private mode: omit the opinion, spawn defaults apply.
+        }
+      }
       const response = await fetch(`/api/mcp?${params}`);
       const data = await response.json() as { servers?: McpServer[]; user?: McpUserConfig; inventory?: McpLiveServer[]; liveServers?: McpLiveServer[]; liveError?: string; path?: string; error?: string };
       if (!response.ok || data.error) throw new Error(data.error || `HTTP ${response.status}`);

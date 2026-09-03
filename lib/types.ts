@@ -445,13 +445,13 @@ export interface ArchivedSessionInfo {
   status?: "complete" | "interrupted" | "aborted" | "error" | "pending" | "unknown";
 }
 
-/** 工作区级 omp 启动配置；配置只影响该工作区启动的 omp 子进程。 */
+/** Workspace-level omp launch configuration; only affects omp children spawned for that workspace. */
 export interface ProjectLaunchConfig {
-  /** 使用的 OMP profile。 */
+  /** The OMP profile to use. */
   profile?: string;
-  /** 是否以 advisor 模式启动。 */
+  /** Whether to launch with advisor mode. */
   advisor?: boolean;
-  /** 按参数数组保存的额外 OMP CLI 参数。 */
+  /** Extra OMP CLI args, stored as an array. */
   extraArgs?: string[];
 }
 
@@ -466,7 +466,7 @@ export interface ManagedProject {
   alias?: string;
   /** Explicit sidebar position for registered projects. */
   sortOrder?: number;
-  /** 工作区级 omp 启动配置。 */
+  /** Workspace-level omp launch configuration. */
   launchConfig?: ProjectLaunchConfig;
 }
 
