@@ -279,6 +279,8 @@
   "chatInput.cmdName": "设置会话显示名称",
   "chatInput.cmdAdvisor": "对当前工作进行独立的顾问评审",
   "chatInput.cmdAdvisorArg": "[主题]",
+  "chatInput.cmdLoop": "重复执行任务直到完成，最多 N 次",
+  "chatInput.cmdLoopArg": "[次数] [任务]",
   "chatInput.cmdReload": "重新加载扩展、技能、提示词和工具",
   "chatInput.cmdSession": "显示会话的消息、token 和费用统计",
   "chatInput.collapseControls": "收起控件",

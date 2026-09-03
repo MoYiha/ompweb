@@ -279,6 +279,8 @@
   "chatInput.cmdName": "セッションの表示名を設定します",
   "chatInput.cmdAdvisor": "現在の作業について独立したアドバイザリーレビューを受ける",
   "chatInput.cmdAdvisorArg": "[トピック]",
+  "chatInput.cmdLoop": "タスクが完了するまで最大N回繰り返す",
+  "chatInput.cmdLoopArg": "[回数] [タスク]",
   "chatInput.cmdReload": "拡張機能、スキル、プロンプト、ツールを再読み込みします",
   "chatInput.cmdSession": "セッションのメッセージ・トークン・コストの統計を表示します",
   "chatInput.collapseControls": "コントロールを折りたたむ",

@@ -279,6 +279,8 @@
   "chatInput.cmdName": "Set the session display name",
   "chatInput.cmdAdvisor": "Get an independent advisory review of the current work",
   "chatInput.cmdAdvisorArg": "[topic]",
+  "chatInput.cmdLoop": "Repeat a task until done, up to N attempts",
+  "chatInput.cmdLoopArg": "[count] [task]",
   "chatInput.cmdReload": "Reload extensions, skills, prompts, and tools",
   "chatInput.cmdSession": "Show session message, token, and cost stats",
   "chatInput.collapseControls": "Collapse controls",
