@@ -105,9 +105,15 @@ export class RpcProcess {
     if (options.onFrame) this.frameListeners.add(options.onFrame);
 
     const args = ["--mode", "rpc-ui", "--cwd", options.cwd, ...(options.extraArgs ?? [])];
+    // omp-web ignores named profiles (OMP_PROFILE/PI_PROFILE): strip them so the
+    // child resolves the same default agent dir. An explicit options.env entry
+    // still wins (used to force the default profile for isolated test runs).
+    const childEnv = sanitizeProjectCommandEnvironment({ ...process.env, ...options.env });
+    if (options.env?.OMP_PROFILE === undefined) delete childEnv.OMP_PROFILE;
+    if (options.env?.PI_PROFILE === undefined) delete childEnv.PI_PROFILE;
     this.child = this.spawnProcess(bin, args, {
       cwd: options.cwd,
-      env: sanitizeProjectCommandEnvironment({ ...process.env, ...options.env }),
+      env: childEnv,
       stdio: ["pipe", "pipe", "pipe"],
       windowsHide: true,
       // On POSIX, omp launches grandchildren (LSP servers, extension subprocesses). Run the

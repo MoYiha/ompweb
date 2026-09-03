@@ -53,7 +53,8 @@ export async function POST(req: Request) {
 
     // Isolated throwaway agent dir: the spawned omp sees only this candidate
     // config (no stored credentials, no models.db cache) and never touches
-    // ~/.omp. Profile/XDG overrides are cleared so the redirect always wins.
+    // ~/.omp. Profile/XDG overrides are cleared so the redirect always wins
+    // (the omp child still honors profiles even though omp-web ignores them).
     tempDir = mkdtempSync(join(tmpdir(), "omp-web-model-test-"));
     writeFileSync(join(tempDir, "models.yml"), serializeModelsConfig(config), "utf8");
 

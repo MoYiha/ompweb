@@ -46,7 +46,7 @@ files via `lib/session-reader.ts` — no child process involved.
 Shared foundations in `lib/omp/`:
 
 - `paths.ts` — Node port of omp's directory resolution (`~/.omp/agent`,
-  profiles, XDG, session dir slugs).
+  XDG, session dir slugs).
 - `omp-cli.ts` — locate/probe the installed `omp` binary (`resolveOmpBin`,
   `getOmpVersion`).
 - `rpc-process.ts` — process + NDJSON protocol layer (`RpcProcess`).
