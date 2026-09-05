@@ -185,8 +185,3 @@ function getUsageOutput(): Promise<string> {
 export async function getProviderUsage(query: UsageQuery = {}): Promise<ProviderUsageSnapshot> {
   return parseProviderUsageOutput(await getUsageOutput(), query);
 }
-
-export function clearProviderUsageCache(): void {
-  usageCache = undefined;
-  usageInFlight = undefined;
-}
