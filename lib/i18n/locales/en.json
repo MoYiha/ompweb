@@ -65,6 +65,7 @@
   "settingsConfig.ompLabel": "OMP runtime",
   "settingsConfig.checkingUpdates": "Checking for updates...",
   "settingsConfig.upToDate": "v{version} is up to date",
+  "settingsConfig.updatesDisabled": "Updates are disabled by OMP_WEB_DISABLE_AUTOUPDATE",
   "settingsConfig.versionUnavailable": "Version unavailable",
   "settingsConfig.checkAppUpdates": "Check ompweb updates",
   "settingsConfig.checkOmpUpdates": "Check OMP updates",

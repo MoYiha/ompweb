@@ -1,11 +1,13 @@
 import { execFile } from "child_process";
 import { resolveOmpBin, wrapWindowsScript } from "./omp-cli";
+import { isUpdateDisabled } from "../update-policy";
 
 export interface OmpUpdateStatus {
   currentVersion: string | null;
   availableVersion: string | null;
   updateAvailable: boolean;
   updateCommand: string;
+  updatesDisabled?: boolean;
 }
 
 export const OMP_UPDATE_CHECK_TIMEOUT_MS = 15_000;
@@ -76,6 +78,9 @@ export function createCachedOmpUpdateCheck(
 const defaultCachedOmpUpdateCheck = createCachedOmpUpdateCheck();
 
 export async function checkOmpUpdate(force = false): Promise<OmpUpdateStatus> {
+  if (isUpdateDisabled()) {
+    return { currentVersion: null, availableVersion: null, updateAvailable: false, updateCommand: "omp update", updatesDisabled: true };
+  }
   return defaultCachedOmpUpdateCheck(force);
 }
 
