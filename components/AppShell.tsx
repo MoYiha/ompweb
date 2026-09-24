@@ -1627,7 +1627,7 @@ export function AppShell() {
     `}
     </style>
     <a href="#main-content" className="skip-link">{t("appShell.skipToContent")}</a>
-    <div style={{ display: "flex", height: "100%", flex: 1, overflow: "hidden", background: "var(--bg)" }}>
+    <div style={{ display: "flex", height: "100%", flex: 1, minHeight: 0, minWidth: 0, overflow: "hidden", background: "var(--bg)" }}>
       {/* Left sidebar: hidden on full-page Settings */}
       {!settingsTab && (
         <>
@@ -1702,7 +1702,7 @@ export function AppShell() {
       )}
 
       {/* Center: chat */}
-      <main id="main-content" tabIndex={-1} inert={rightPanelIsModal ? true : undefined} style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
+      <main id="main-content" tabIndex={-1} inert={rightPanelIsModal ? true : undefined} style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, minWidth: 0, overflow: "hidden" }}>
         {settingsTab ? (
           <SettingsConfig
             activeTab={settingsTab}

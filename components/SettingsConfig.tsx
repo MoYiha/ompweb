@@ -733,15 +733,15 @@ export function SettingsConfig({ activeTab, toolCallsDefaultCollapsed, onToolCal
             {t("settingsConfig.title")}
           </h1>
           {nativeSavesInFlight > 0 ? (
-            <span style={{ fontSize: "var(--text-xs)", color: "var(--accent)", padding: "2px 8px", borderRadius: 10, background: "var(--bg-subtle)", display: "inline-flex", alignItems: "center", gap: 4 }}>
+            <span className="settings-save-status" style={{ fontSize: "var(--text-xs)", color: "var(--accent)", padding: "2px 8px", borderRadius: 10, background: "var(--bg-subtle)", display: "inline-flex", alignItems: "center", gap: 4 }}>
               <RefreshCw size={11} className="spin" aria-hidden="true" /> {t("settingsConfig.saving")}
             </span>
           ) : nativeSettingsLoading ? (
-            <span style={{ fontSize: "var(--text-xs)", color: "var(--text-dim)", padding: "2px 8px", borderRadius: 10, background: "var(--bg-subtle)" }}>
+            <span className="settings-save-status" style={{ fontSize: "var(--text-xs)", color: "var(--text-dim)", padding: "2px 8px", borderRadius: 10, background: "var(--bg-subtle)" }}>
               {t("appShell.loading")}
             </span>
           ) : nativeSettingsError ? null : (
-            <span style={{ fontSize: "var(--text-xs)", color: "var(--text-dim)", padding: "2px 8px", borderRadius: 10, background: "var(--bg-subtle)" }}>
+            <span className="settings-save-status" style={{ fontSize: "var(--text-xs)", color: "var(--text-dim)", padding: "2px 8px", borderRadius: 10, background: "var(--bg-subtle)" }}>
               {t("settingsConfig.autoSaved")}
             </span>
           )}
