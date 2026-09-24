@@ -12,6 +12,8 @@ type Props = {
   onSelectSession: (session: SessionInfo) => void;
   onNewSession: () => void;
   currentModel?: string | null;
+  initialOpen?: boolean;
+  openRequest?: number;
 };
 
 function relativeTime(value: string, locale: string): string {
@@ -24,10 +26,13 @@ function relativeTime(value: string, locale: string): string {
   return new Intl.RelativeTimeFormat(locale, { numeric: "always" }).format(-Math.floor(hours / 24), "day");
 }
 
-export const CommandPalette = memo(function CommandPalette({ onSelectSession, onNewSession, currentModel }: Props) {
+export const CommandPalette = memo(function CommandPalette({ onSelectSession, onNewSession, currentModel, initialOpen = false, openRequest = 0 }: Props) {
   const { t, locale } = useI18n();
   const { isDark, toggleTheme, setTheme, preference } = useTheme();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(initialOpen);
+  useEffect(() => {
+    if (openRequest > 0) setOpen(true);
+  }, [openRequest]);
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
   const [loading, setLoading] = useState(false);
   const loadSeqRef = useRef(0);
@@ -90,7 +95,7 @@ export const CommandPalette = memo(function CommandPalette({ onSelectSession, on
           <Command.Input autoFocus placeholder={t("commandPalette.placeholder")} style={{ width: "100%", border: 0, outline: 0, background: "transparent", color: "var(--text)", fontSize: 15 }} />
         </div>
         <Command.List style={{ padding: "8px", overflowY: "auto", maxHeight: "min(55vh, 440px)" }}>
-          <Command.Empty style={{ padding: 20, textAlign: "center", color: "var(--text-muted)", fontSize: 13 }}>{loading ? "Loading sessions..." : t("commandPalette.empty")}</Command.Empty>
+          <Command.Empty style={{ padding: 20, textAlign: "center", color: "var(--text-muted)", fontSize: 13 }}>{loading ? t("appShell.loading") : t("commandPalette.empty")}</Command.Empty>
           <Command.Group heading={t("commandPalette.sessions")}>
             {sessions.map((session) => <Command.Item key={session.id} value={`${session.name ?? session.id} ${session.cwd}`} onSelect={() => choose(() => onSelectSession(session))} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 10px", borderRadius: "var(--radius-control)", color: "var(--text)", cursor: "pointer" }}><MessageSquare size={15} color="var(--accent)" /><span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{session.name || session.id}</span><span style={{ color: "var(--text-dim)", fontSize: 11 }}>{relativeTime(session.modified, locale)}</span></Command.Item>)}
           </Command.Group>

@@ -1807,6 +1807,9 @@ pre, code {
     font-size: 11px !important;
   }
 }
+@media (min-width: 641px) {
+  .composer-toolbar { flex-wrap: nowrap !important; }
+}
 @media (prefers-reduced-motion: reduce) {
   .sidebar-project-sessions, .sidebar-project-worktree, .composer-control-shelf { animation: none; }
 }
@@ -1814,6 +1817,16 @@ pre, code {
 @media (max-width: 640px) {
   .file-viewer-meta {
     display: none;
+  }
+  .composer-toolbar { flex-wrap: wrap !important; row-gap: 6px; }
+  .composer-toolbar-spacer { display: none; }
+  .composer-primary-action { margin-left: auto; }
+
+  .sidebar-icon-button,
+  .sidebar-project-action,
+  .sidebar-project-toggle {
+    min-width: 44px;
+    min-height: 44px;
   }
 }
 
@@ -2307,8 +2320,9 @@ html.dark .dropdown-surface :is(select, option) {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  height: 48px;
-  padding: 0 20px;
+  min-height: calc(48px + env(safe-area-inset-top, 0px));
+  height: auto;
+  padding: env(safe-area-inset-top, 0px) 20px 0;
   border-bottom: 1px solid var(--border);
   background: var(--bg-panel);
   flex-shrink: 0;
@@ -2414,6 +2428,17 @@ html.dark .dropdown-surface :is(select, option) {
   padding: 0;
   background: var(--bg);
   scrollbar-gutter: stable;
+}
+.settings-loading-state {
+  width: min(100%, 860px);
+  margin: 0 auto;
+  padding: 32px 24px;
+  display: grid;
+  gap: 12px;
+}
+.settings-loading-row {
+  height: 68px;
+  border-radius: var(--radius-card);
 }
 .settings-panel-inner {
   width: 100%;
@@ -2646,7 +2671,7 @@ html.dark .dropdown-surface :is(select, option) {
   text-transform: uppercase;
 }
 
-@media (max-width: 768px) {
+@media (max-width: 640px) {
   .settings-body {
     flex-direction: column;
   }
@@ -2659,10 +2684,27 @@ html.dark .dropdown-surface :is(select, option) {
     padding: 6px;
   }
   .settings-content {
-    padding: 16px 18px 32px;
+    padding: 16px 18px max(32px, env(safe-area-inset-bottom, 0px));
   }
   .settings-header {
-    padding: 0 12px;
+    padding: env(safe-area-inset-top, 0px) 12px 0;
+  }
+}
+.chat-scroll-bottom {
+  transition: background var(--dur-fast) var(--ease-out-warm), color var(--dur-fast) var(--ease-out-warm), transform var(--dur-fast) var(--ease-out-warm);
+}
+.chat-scroll-bottom:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+.chat-scroll-bottom:active {
+  transform: scale(0.98);
+}
+
+@media (pointer: coarse) {
+  .chat-scroll-bottom {
+    min-width: 44px;
+    min-height: 44px;
   }
 }
 
@@ -2906,6 +2948,17 @@ html.dark .dropdown-surface :is(select, option) {
   gap: 4px;
   height: 100%;
 }
+.shell-mobile-context {
+  display: none;
+  min-width: 0;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: "var(--text)";
+  font-size: 11px;
+  font-weight: 600;
+}
 .shell-topbar-center {
   position: absolute;
   top: 4.5px;
@@ -2925,16 +2978,45 @@ html.dark .dropdown-surface :is(select, option) {
   }
 }
 
-@media (max-width: 960px) {
+@media (min-width: 641px) and (max-width: 960px) {
   .shell-topbar-center {
-    display: none !important;
+    display: flex !important;
+    width: min(260px, 28vw);
+  }
+  .shell-topbar-center > .shell-topbar-breadcrumb {
+    max-width: 100%;
   }
 }
 
 @media (max-width: 640px) {
+  .shell-topbar-center {
+    display: none !important;
+  }
+  .shell-mobile-context {
+    display: inline-flex;
+    align-items: center;
+  }
+
+}
+@media (max-width: 640px) {
   .shell-topbar {
     gap: 0 4px !important;
     padding-right: 48px !important;
+  }
+  .shell-topbar-overflow-content {
+    overflow-x: auto;
+    justify-content: flex-start;
+    scrollbar-width: none;
+  }
+  .shell-topbar-overflow-content::-webkit-scrollbar {
+    display: none;
+  }
+  .shell-topbar-overflow-content > * {
+    flex-shrink: 0;
+  }
+  .shell-mobile-context {
+    flex: 0 0 112px;
+    max-width: 112px;
   }
   .shell-topbar-tools {
     gap: 2px !important;
@@ -3560,6 +3642,24 @@ html.dark .dropdown-surface :is(select, option) {
     transition: none;
   }
 }
+@media (min-width: 641px) and (max-width: 959px) {
+  .right-panel-resize-handle {
+    display: none !important;
+  }
+  .right-panel-container.right-panel-open {
+    position: fixed;
+    top: 36px;
+    right: 0;
+    bottom: 0;
+    width: min(360px, 55vw);
+    z-index: 210;
+    box-shadow: var(--shadow-modal);
+  }
+  .right-panel-container.right-panel-open > * {
+    width: 100% !important;
+    min-width: 0;
+  }
+}
 
 /* Mobile sidebar: slide in/out as overlay */
 @media (max-width: 640px) {
@@ -3568,7 +3668,7 @@ html.dark .dropdown-surface :is(select, option) {
   }
   .sidebar-container {
     position: fixed !important;
-    top: 0;
+    top: env(safe-area-inset-top, 0px);
     left: 0;
     bottom: 0;
     width: 280px;
@@ -3610,6 +3710,11 @@ html.dark .dropdown-surface :is(select, option) {
   .directory-picker-footer {
     flex-wrap: wrap;
     padding-bottom: max(10px, env(safe-area-inset-bottom)) !important;
+  }
+  .directory-picker-profile,
+  .directory-picker-extra-args,
+  .directory-picker-launch {
+    min-height: 44px;
   }
 }
 
@@ -3706,9 +3811,61 @@ html.dark .dropdown-surface :is(select, option) {
   .composer-toolbar > div > button,
   .composer-primary-action,
   .shell-toolbar-btn,
-  .right-panel-toolbar [role="toolbar"] > button {
+  .sidebar-icon-button,
+  .sidebar-project-action,
+  .sidebar-project-toggle,
+  .right-panel-toolbar [role="toolbar"] > button,
+  .git-clear-filter,
+  .git-refresh,
+  .git-change-open-action,
+  .git-change-mention-action,
+  .git-change-footer-open,
+  .file-explorer-search-input,
+  .file-explorer-search-clear,
+  .sidebar-session-search,
+  .attachment-remove-button,
+  .archive-search-input,
+  .archive-search-clear {
+    min-height: 44px;
+  }
+  .attachment-remove-button,
+  .file-explorer-search-clear,
+  .archive-search-clear {
+    min-width: 44px;
+  }
+  .load-retry-button {
     min-width: 44px;
     min-height: 44px;
+  }
+  .git-change-row {
+    min-height: 44px;
+  }
+  .dialog-action {
+    min-height: 44px;
+  }
+  .settings-back,
+  .settings-close-btn,
+  .settings-header input,
+  .settings-nav-item,
+  .providers-segmented-btn,
+  .agent-config-action,
+  .agent-config-search,
+  .agent-config-row {
+    min-height: 44px;
+  }
+  .mcp-refresh-button,
+  .mcp-server-select,
+  .mcp-add-server,
+  .mcp-config-input,
+  .mcp-action {
+    min-height: 44px;
+  }
+  .settings-close-btn,
+  .mcp-refresh-button {
+    min-width: 44px;
+  }
+  .settings-close-btn {
+    min-width: 44px;
   }
 }
 

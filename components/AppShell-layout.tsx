@@ -56,8 +56,12 @@ export function loadRightPanelWidth(): number | null {
 export function PanelLoadingFallback() {
   const { t } = useI18n();
   return (
-    <div role="status" style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-dim)", fontSize: 12 }}>
-      {t("appShell.loading")}
+    <div role="status" aria-busy="true" aria-label={t("appShell.loading")} style={{ height: "100%", display: "flex", flexDirection: "column", gap: 10, padding: 16, boxSizing: "border-box" }}>
+      <div aria-hidden="true" className="skeleton" style={{ width: "38%", height: 14, flexShrink: 0 }} />
+      <div aria-hidden="true" className="skeleton" style={{ width: "100%", height: 36, flexShrink: 0 }} />
+      <div aria-hidden="true" style={{ display: "grid", gap: 8, paddingTop: 8 }}>
+        {[0, 1, 2, 3, 4].map((row) => <div key={row} className="skeleton" style={{ width: `${92 - row * 7}%`, height: 18 }} />)}
+      </div>
     </div>
   );
 }

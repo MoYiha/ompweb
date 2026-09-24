@@ -416,8 +416,8 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
       if (files.length > 0) {
         setAttachError(
           remaining === 0
-            ? `Maximum of ${MAX_ATTACHED_IMAGES} attached images reached.`
-            : `${files.length} image(s) skipped: images up to ${formatAttachmentBytes(MAX_ATTACHED_IMAGE_BYTES)} are supported.`,
+            ? t("chatInput.attachmentImageLimit", { count: MAX_ATTACHED_IMAGES })
+            : t("chatInput.attachmentImagesSkipped", { count: files.length, size: formatAttachmentBytes(MAX_ATTACHED_IMAGE_BYTES) }),
         );
       }
       return;
@@ -459,7 +459,7 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
     } catch {
       // A failed read in the batch must not leak the siblings' blob URLs.
       created.forEach(revokeImagePreview);
-      setAttachError("One or more images could not be read. Try a different file.");
+      setAttachError(t("chatInput.attachmentImageReadFailed"));
     } finally {
       pendingImageCountRef.current -= imageFiles.length;
     }
@@ -479,10 +479,10 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
     // Report every dropped candidate, not just an entirely rejected batch: a
     // drop of several files can lose some to the budget while accepting others.
     const limitMessage = remaining === 0 && files.length > 0
-      ? `Maximum of ${MAX_ATTACHED_TEXT_FILES} text files reached.`
+      ? t("chatInput.attachmentTextFilesLimit", { count: MAX_ATTACHED_TEXT_FILES })
       : describeTextAttachmentSkip({ tooLarge, overBudget });
     if (!textFiles.length) {
-      if (files.length > 0) setAttachError(limitMessage ?? `${files.length} file(s) skipped.`);
+      if (files.length > 0) setAttachError(limitMessage ?? t("chatInput.attachmentFilesSkipped", { count: files.length }));
       return;
     }
     const revision = attachmentRevisionRef.current;
@@ -513,10 +513,10 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
       ]);
       setAttachError(
         limitMessage
-          ?? (skipped > 0 ? `${skipped} file(s) skipped: binary or non-text files cannot be attached.` : null),
+          ?? (skipped > 0 ? t("chatInput.attachmentBinarySkipped", { count: skipped }) : null),
       );
     } catch {
-      setAttachError("One or more files could not be read. Try a different file.");
+      setAttachError(t("chatInput.attachmentTextReadFailed"));
     } finally {
       pendingTextFileCountRef.current -= textFiles.length;
       pendingTextFileBytesRef.current -= textFiles.reduce((total, file) => total + file.size, 0);
@@ -525,7 +525,7 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
 
   const processFiles = useCallback((files: File[]) => {
     if (isStreaming) {
-      setAttachError("Attachments are disabled while the agent is running.");
+      setAttachError(t("chatInput.attachmentsDisabled"));
       return;
     }
     const imageFiles = files.filter((file) => file.type.startsWith("image/"));
@@ -1595,7 +1595,7 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
               <button
                 type="button"
                 onClick={onAbortRetry}
-                title="Stop the automatic retry and leave the failed turn as-is"
+                title={t("chatInput.abortRetryTitle")}
                 style={{
                   marginLeft: "auto",
                   padding: "3px 9px",
@@ -1611,7 +1611,7 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
                 onMouseEnter={(e) => { e.currentTarget.style.background = "color-mix(in srgb, var(--status-warning) 12%, transparent)"; }}
                 onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
               >
-                Abort retry
+                {t("chatInput.abortRetry")}
               </button>
             )}
           </div>
@@ -1650,9 +1650,10 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
                   style={{ width: 56, height: 56, objectFit: "cover", borderRadius: 6, border: "1px solid var(--border)", display: "block" }}
                 />
                 <button
+                  className="attachment-remove-button"
                   onClick={() => removeImage(i)}
-                  title="Remove image"
-                  aria-label="Remove image"
+                  title={t("chatInput.removeImage")}
+                  aria-label={t("chatInput.removeImage")}
                   style={{
                     position: "absolute", top: -5, right: -5,
                     width: 24, height: 24, borderRadius: "50%",
@@ -1707,9 +1708,10 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
                   {file.size < 1024 ? `${file.size} B` : `${Math.round(file.size / 1024)} KB`}
                 </span>
                 <button
+                  className="attachment-remove-button"
                   onClick={() => removeTextFile(i)}
-                  title="Remove file"
-                  aria-label="Remove file"
+                  title={t("chatInput.removeFile")}
+                  aria-label={t("chatInput.removeFile")}
                   style={{
                     flexShrink: 0, width: 18, height: 18,
                     borderRadius: "50%",
@@ -2391,7 +2393,8 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
             marginTop: 8,
             paddingTop: 8,
             borderTop: "1px solid color-mix(in srgb, var(--border) 62%, transparent)",
-            flexWrap: "nowrap",
+            flexWrap: "wrap",
+            rowGap: 6,
           }}>
             {/* Plus menu — attachment · tools submenu · advisor submenu */}
             <div ref={plusMenuRef} style={{ position: "relative", flexShrink: 0 }}>
@@ -2743,7 +2746,7 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
               </button>
             )}
 
-            <div style={{ marginLeft: "auto" }} />
+            <div className="composer-toolbar-spacer" style={{ marginLeft: "auto" }} />
 
             {/* Advisor activity — thunder while the advisor model reviews this run */}
             {advisorActive && (

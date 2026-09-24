@@ -269,28 +269,41 @@ function ToggleSwitch({
         position: "relative",
         display: "inline-flex",
         alignItems: "center",
-        width: 40,
-        height: 24,
-        borderRadius: 12,
+        justifyContent: "center",
+        width: 44,
+        height: 44,
+        padding: 10,
         border: "none",
-        background: checked ? "var(--accent-strong)" : "var(--border)",
+        background: "transparent",
         cursor: disabled ? "not-allowed" : "pointer",
-        transition: "background var(--dur-fast)",
-        padding: 2,
         flexShrink: 0,
       }}
     >
       <span
+        aria-hidden="true"
         style={{
-          width: 20,
-          height: 20,
-          borderRadius: 10,
-          background: "#fff",
-          transform: checked ? "translateX(16px)" : "translateX(0px)",
-          transition: "transform var(--dur-fast)",
-          boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
+          display: "inline-flex",
+          alignItems: "center",
+          width: 40,
+          height: 24,
+          padding: 2,
+          borderRadius: 12,
+          background: checked ? "var(--accent-strong)" : "var(--border)",
+          transition: "background var(--dur-fast)",
         }}
-      />
+      >
+        <span
+          style={{
+            width: 20,
+            height: 20,
+            borderRadius: 10,
+            background: "#fff",
+            transform: checked ? "translateX(16px)" : "translateX(0px)",
+            transition: "transform var(--dur-fast)",
+            boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
+          }}
+        />
+      </span>
     </button>
   );
 }
@@ -472,20 +485,29 @@ export function SettingsConfig({ activeTab, toolCallsDefaultCollapsed, onToolCal
 
   const [nativeSettings, setNativeSettings] = useState<NativeSettings | null>(null);
   const [nativeSettingsError, setNativeSettingsError] = useState<string | null>(null);
+  const [nativeSettingsLoading, setNativeSettingsLoading] = useState(true);
   const [nativeSavesInFlight, setNativeSavesInFlight] = useState(0);
   const [isPending, startTransition] = useTransition();
   const latestNativeSettingsRef = useRef<NativeSettings | null>(null);
   const nativeSaveDrainingRef = useRef(false);
   const nativeSettingsMutatedRef = useRef(false);
 
-  useEffect(() => {
-    fetch("/api/omp-settings")
+  const loadNativeSettings = useCallback(() => {
+    nativeSettingsMutatedRef.current = false;
+    setNativeSettingsLoading(true);
+    setNativeSettingsError(null);
+    fetch("/api/omp-settings", { signal: AbortSignal.timeout(12000) })
       .then((response) => (response.ok ? response.json() : Promise.reject(new Error(`HTTP ${response.status}`))))
       .then((data: { settings?: NativeSettings }) => {
         if (!nativeSettingsMutatedRef.current) setNativeSettings(data.settings ?? {});
       })
-      .catch((error) => setNativeSettingsError(error instanceof Error ? error.message : String(error)));
+      .catch((error) => setNativeSettingsError(error instanceof Error ? error.message : String(error)))
+      .finally(() => setNativeSettingsLoading(false));
   }, []);
+
+  useEffect(() => {
+    void loadNativeSettings();
+  }, [loadNativeSettings]);
 
   const saveNativeSettings = useCallback((next: NativeSettings) => {
     nativeSettingsMutatedRef.current = true;
@@ -714,7 +736,11 @@ export function SettingsConfig({ activeTab, toolCallsDefaultCollapsed, onToolCal
             <span style={{ fontSize: 11, color: "var(--accent)", padding: "2px 8px", borderRadius: 10, background: "var(--bg-subtle)", display: "inline-flex", alignItems: "center", gap: 4 }}>
               <RefreshCw size={11} className="spin" aria-hidden="true" /> {t("settingsConfig.saving")}
             </span>
-          ) : (
+          ) : nativeSettingsLoading ? (
+            <span style={{ fontSize: 11, color: "var(--text-dim)", padding: "2px 8px", borderRadius: 10, background: "var(--bg-subtle)" }}>
+              {t("appShell.loading")}
+            </span>
+          ) : nativeSettingsError ? null : (
             <span style={{ fontSize: 11, color: "var(--text-dim)", padding: "2px 8px", borderRadius: 10, background: "var(--bg-subtle)" }}>
               {t("settingsConfig.autoSaved")}
             </span>
@@ -775,9 +801,28 @@ export function SettingsConfig({ activeTab, toolCallsDefaultCollapsed, onToolCal
             <SettingsTabs active={currentTab} onSelect={handleSelectTab} workspaceReady={workspaceReady} layout={isMobile ? "horizontal" : "vertical"} attentionTabs={attentionTabs} />
 
             <div className="settings-content" style={contentStyle}>
+            {nativeSettingsLoading ? (
+              <div className="settings-loading-state" role="status" aria-live="polite" aria-busy="true" aria-label={t("appShell.loading")}>
+                <div className="skeleton settings-loading-row" />
+                <div className="skeleton settings-loading-row" />
+                <div className="skeleton settings-loading-row" />
+              </div>
+            ) : (
+              <>
             {nativeSettingsError && (
               <div style={{ margin: 16 }}>
                 <Alert variant="error" description={nativeSettingsError} onDismiss={() => setNativeSettingsError(null)} />
+              </div>
+            )}
+            {nativeSettingsError && (
+              <div style={{ margin: "0 16px 16px", display: "flex", justifyContent: "flex-end" }}>
+                <button
+                  type="button"
+                  onClick={() => void loadNativeSettings()}
+                  style={{ minHeight: 32, padding: "5px 10px", border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "var(--bg-panel)", color: "var(--text)", cursor: "pointer", fontSize: 12, fontWeight: 600 }}
+                >
+                  {t("chatWindow.retry")}
+                </button>
               </div>
             )}
 
@@ -1482,6 +1527,8 @@ export function SettingsConfig({ activeTab, toolCallsDefaultCollapsed, onToolCal
                   </section>
                 )}
               </div>
+            )}
+              </>
             )}
               </div>
             </SettingsHighlightContext.Provider>

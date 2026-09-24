@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useGlobalKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { useSidebarHistory } from "@/hooks/useSidebarHistory";
+import { useModalDialog } from "@/hooks/useModalDialog";
 import { SessionSidebar } from "./SessionSidebar";
 import { ToastProvider } from "./ui/toast";
 import { toast } from "./ui/toast";
@@ -15,7 +16,8 @@ import { type FileExplorerHandle } from "./FileExplorer";
 import type { RightPanelView } from "./RightPanel";
 import { BranchNavigator } from "./BranchNavigator";
 import { LanguageSwitcher } from "./LanguageSwitcher";
-import { Check, Ellipsis, Folder, History, Menu, PanelLeft, Terminal, Wand2, Zap } from "lucide-react";
+import { CommandPaletteMount } from "./CommandPaletteMount";
+import { Check, Command, Ellipsis, Folder, History, Menu, PanelLeft, PanelRight, Terminal, Wand2, X, Zap } from "lucide-react";
 import { ThemeSwitcher } from "./ThemeSwitcher";
 import { translate, useI18n } from "@/lib/i18n";
 import { formatApiError } from "@/lib/i18n/api-error";
@@ -84,9 +86,6 @@ const TOOL_CALLS_COLLAPSED_STORAGE_KEY = "omp-web:tool-calls-collapsed";
 const PROVIDER_USAGE_VISIBLE_STORAGE_KEY = "omp-web:provider-usage-visible";
 const NATIVE_SELECT_ALL_STORAGE_KEY = "omp-web:scope-native-select-all";
 
-const CommandPalette = dynamic(() => import("./CommandPalette").then((m) => m.CommandPalette), {
-  ssr: false,
-});
 
 type AutoNameStatus =
   | { kind: "idle" }
@@ -130,7 +129,10 @@ export function AppShell() {
   // Active drag handlers so an unmount mid-drag can detach them.
   const sidebarResizeHandlersRef = useRef<{ onMove: (ev: MouseEvent) => void; onUp: () => void } | null>(null);
   // DOM element + live width during a drag (see handleSidebarResizeStart).
-  const sidebarContainerRef = useRef<HTMLDivElement>(null);
+  const sidebarContainerRef = useModalDialog<HTMLElement>({
+    onClose: () => setSidebarOpen(false),
+    active: isMobile && mobileSidebarReady && sidebarOpen && !settingsTab,
+  });
   const pendingSidebarWidthRef = useRef<number>(SIDEBAR_DEFAULT_WIDTH);
   useEffect(() => {
     setSidebarWidth(loadSidebarWidth());
@@ -933,6 +935,7 @@ export function AppShell() {
   const [fileTabs, setFileTabs] = useState<Tab[]>([]);
   const [activeFileTabId, setActiveFileTabId] = useState<string | null>(null);
   const [rightPanelOpen, setRightPanelOpen] = useState(false);
+  const [rightPanelHasOpened, setRightPanelHasOpened] = useState(false);
   const [rightView, setRightView] = useState<"explorer" | "git" | "file">("explorer");
   // User-chosen pixel width (null = fluid 42% default), persisted.
   const [rightPanelWidth, setRightPanelWidth] = useState<number | null>(null);
@@ -943,6 +946,9 @@ export function AppShell() {
   useEffect(() => {
     setRightPanelWidth(loadRightPanelWidth());
   }, []);
+  useEffect(() => {
+    if (rightPanelOpen) setRightPanelHasOpened(true);
+  }, [rightPanelOpen]);
   // One-shot request asking the explorer tab to expand + scroll to a file.
   const [revealPath, setRevealPath] = useState<string | null>(null);
   const [fileSearchOpen, setFileSearchOpen] = useState(false);
@@ -1529,7 +1535,7 @@ export function AppShell() {
         danger
         onConfirm={sidebarHistory.leave}
       />
-      <CommandPalette
+      <CommandPaletteMount
         onSelectSession={handleSelectSession}
         onNewSession={() => {
           // An empty cwd is truthy, so showChat would render the shell while
@@ -1635,6 +1641,10 @@ export function AppShell() {
       />
 
       <nav
+        id="workspace-sidebar"
+        role={isMobile ? "dialog" : undefined}
+        aria-modal={isMobile ? true : undefined}
+        tabIndex={-1}
         ref={sidebarContainerRef}
         className={`sidebar-container${sidebarOpen ? " sidebar-open" : " sidebar-closed"}${mobileSidebarReady ? "" : " sidebar-mobile-pending"}${sidebarResizing ? " sidebar-resizing" : ""}`}
         aria-label={t("projects.heading")}
@@ -1716,9 +1726,9 @@ export function AppShell() {
           alignItems: "center",
           flexShrink: 0,
           borderBottom: "1px solid var(--border)",
-          minHeight: isMobile ? 44 : 36,
+          minHeight: isMobile ? "calc(44px + env(safe-area-inset-top))" : 36,
           background: "var(--bg-panel)",
-          padding: isMobile ? "0 4px" : "0 8px",
+          padding: isMobile ? "env(safe-area-inset-top) 4px 0" : "0 8px",
           gap: "0 8px",
           minWidth: 0,
         }}>
@@ -1726,6 +1736,8 @@ export function AppShell() {
           <div className="shell-topbar-tools" style={{ display: "flex", alignItems: "center", gap: 4, height: isMobile ? 43 : 35, minWidth: 0, flexShrink: 0 }}>
             <button
               onClick={handleSidebarToggle}
+              aria-expanded={sidebarOpen}
+              aria-controls="workspace-sidebar"
               title={sidebarOpen ? t("appShell.hideSidebar") : t("appShell.showSidebar")}
               aria-label={sidebarOpen ? t("appShell.hideSidebar") : t("appShell.showSidebar")}
               className="shell-toolbar-btn ui-focus-ring"
@@ -1749,8 +1761,32 @@ export function AppShell() {
                 <Ellipsis size={16} strokeWidth={1.8} aria-hidden="true" />
               </summary>
               <div ref={mobileToolsContentRef} className="shell-topbar-overflow-content">
+                {showChat && (
+                  <span
+                    className="shell-mobile-context"
+                    title={`${projectLabel(selectedSession?.projectRoot ?? selectedSession?.cwd ?? activeCwd ?? "")} · ${selectedSession?.name || selectedSession?.firstMessage || t("appShell.newSession")}`}
+                  >
+                    {selectedSession?.name || selectedSession?.firstMessage || t("appShell.newSession")}
+                  </span>
+                )}
             <ThemeSwitcher />
             <LanguageSwitcher />
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (isMobile && mobileToolsRef.current) {
+                      mobileToolsRef.current.open = false;
+                      setActiveTopPanel(null);
+                    }
+                    window.dispatchEvent(new Event("omp:open-command-palette"));
+                  }}
+                  title={`${t("commandPalette.label")} (Ctrl/⌘ K)`}
+                  aria-label={t("commandPalette.label")}
+                  aria-keyshortcuts="Control+K Meta+K"
+                  className="shell-toolbar-btn ui-focus-ring"
+                >
+                  <Command size={16} strokeWidth={1.8} aria-hidden="true" />
+                </button>
             {showChat && (
               <>
                 <div className="shell-toolbar-divider" aria-hidden="true" />
@@ -2105,12 +2141,13 @@ export function AppShell() {
           ) : initialCwdStatus === "validating" ? (
             <div
               role="status"
-              style={{ height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8, padding: 24, color: "var(--text-muted)", textAlign: "center" }}
+              aria-busy="true"
+              aria-label={t("appShell.openingWorkspace")}
+              style={{ height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10, padding: 24, boxSizing: "border-box", textAlign: "center" }}
             >
-              <div style={{ fontSize: 14, color: "var(--text)" }}>{t("appShell.openingWorkspace")}</div>
-              <div style={{ maxWidth: "min(720px, 100%)", overflowWrap: "anywhere", fontFamily: "var(--font-mono)", fontSize: 12 }}>
-                {initialNavigation.requestedCwd}
-              </div>
+              <div aria-hidden="true" className="skeleton" style={{ width: "min(440px, 72%)", height: 18 }} />
+              <div aria-hidden="true" className="skeleton" style={{ width: "min(620px, 88%)", height: 12 }} />
+              <div aria-hidden="true" className="skeleton" style={{ width: "min(520px, 80%)", height: 12 }} />
             </div>
           ) : initialCwdStatus === "error" ? (
             <div
@@ -2131,7 +2168,7 @@ export function AppShell() {
                 <span className="display-serif">{t("appShell.selectSessionHint")}</span>
               </div>
             ) : (
-              <div style={{ position: "absolute", top: 12, left: 12, display: "flex", alignItems: "flex-start", gap: 8, userSelect: "none", pointerEvents: "none" }}>
+              <div style={{ position: "absolute", top: 12, left: 12, display: "flex", alignItems: "flex-start", gap: 8, userSelect: "none" }}>
                 <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.7, flexShrink: 0 }}>
                   <line x1="20" y1="12" x2="4" y2="12" /><polyline points="10 6 4 12 10 18" />
                 </svg>
@@ -2152,6 +2189,14 @@ export function AppShell() {
                         </>
                       );
                     })()}
+                  <button
+                    type="button"
+                    style={{ display: "flex", alignItems: "center", gap: 6, width: "fit-content", minHeight: 36, marginTop: 12, padding: "7px 10px", border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "var(--bg-panel)", color: "var(--text)", cursor: "pointer", fontSize: 12, fontWeight: 600, boxShadow: "var(--shadow-card)" }}
+                    className="ui-focus-ring"
+                  >
+                    <Folder size={14} strokeWidth={1.8} aria-hidden="true" />
+                    {t("appShell.openWorkspaces")}
+                  </button>
                   </div>
                 </div>
               </div>
@@ -2161,7 +2206,7 @@ export function AppShell() {
           </>
         )}
       </main>
-      {!settingsTab && (
+      {!settingsTab && rightPanelHasOpened && (
         <RightPanel
         fileTabs={fileTabs}
         activeFileTabId={activeFileTabId}
@@ -2211,10 +2256,12 @@ export function AppShell() {
     {!settingsTab && (
       <button
       onClick={() => setRightPanelOpen((v) => !v)}
+      aria-expanded={rightPanelOpen}
+      aria-controls="workspace-file-panel"
       title={rightPanelOpen ? t("appShell.hideFilePanel") : t("appShell.showFilePanel")}
       aria-label={rightPanelOpen ? t("appShell.hideFilePanel") : t("appShell.showFilePanel")}
       style={{
-        position: "fixed", top: 0, right: 0, zIndex: 300,
+        position: "fixed", top: "env(safe-area-inset-top, 0px)", right: 0, zIndex: 300,
         display: "flex", alignItems: "center", justifyContent: "center",
         width: isMobile ? 44 : 36, height: isMobile ? 44 : 36, padding: 0,
         background: "var(--bg-panel)", border: "none", borderLeft: "1px solid var(--border)", borderBottom: "1px solid var(--border)",
@@ -2224,9 +2271,7 @@ export function AppShell() {
       onMouseEnter={(e) => { e.currentTarget.style.color = "var(--text)"; }}
       onMouseLeave={(e) => { e.currentTarget.style.color = rightPanelOpen ? "var(--text)" : "var(--text-muted)"; }}
     >
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <rect x="3" y="3" width="18" height="18" rx="2" /><line x1="15" y1="3" x2="15" y2="21" />
-      </svg>
+      {rightPanelOpen ? <X size={16} strokeWidth={1.8} aria-hidden="true" /> : <PanelRight size={16} strokeWidth={1.8} aria-hidden="true" />}
     </button>
     )}
     <AppUpdateDialog open={appUpdateDialogOpen} update={appUpdate} phase={appUpdatePhase} visibleStage={appUpdateVisibleStage} error={appUpdateError} onProceed={() => void proceedWithAppUpdate()} onNotNow={dismissAppUpdate} />

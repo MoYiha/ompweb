@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, type RefObject } from "react";
+import { memo, useEffect, useState, type RefObject } from "react";
 import {
   AtSign,
   ChevronsDownUp,
@@ -119,12 +119,22 @@ export const RightPanel = memo(function RightPanel({
   const { t } = useI18n();
   const activeFileTab = fileTabs.find((tab) => tab.id === activeFileTabId) ?? null;
   const gitBadge = explorerIsRepo ? explorerGitCount : 0;
+  const [visitedViews, setVisitedViews] = useState<Set<RightPanelView>>(() => new Set(["explorer"]));
+  useEffect(() => {
+    setVisitedViews((previous) => {
+      if (previous.has(rightView)) return previous;
+      const next = new Set(previous);
+      next.add(rightView);
+      return next;
+    });
+  }, [rightView]);
 
   return (
     <>
       {/* Resize handle — desktop only, hidden while the panel is closed */}
       {!isMobile && rightPanelOpen && (
         <div
+          className="right-panel-resize-handle"
           role="separator"
           aria-orientation="vertical"
           aria-label={t("appShell.resizeFilePanel")}
@@ -151,6 +161,7 @@ export const RightPanel = memo(function RightPanel({
       )}
       {/* Right panel: file viewer — always mounted, width animated via CSS */}
       <aside
+        id="workspace-file-panel"
         ref={rightPanelRef}
         className={`right-panel-container${rightPanelOpen ? " right-panel-open" : " right-panel-closed"}${rightPanelResizing ? " right-panel-resizing" : ""}`}
         aria-label={t("appShell.filePanel")}
@@ -313,7 +324,7 @@ export const RightPanel = memo(function RightPanel({
 
         {/* Explorer tab view — kept mounted so expansion survives tab switches. */}
         <div style={{ display: rightView === "explorer" ? "flex" : "none", flexDirection: "column", flex: 1, minHeight: 0, overflow: "hidden" }}>
-          {explorerCwd ? (
+          {visitedViews.has("explorer") && (explorerCwd ? (
             <>
               <div
                 title={explorerCwd}
@@ -378,11 +389,11 @@ export const RightPanel = memo(function RightPanel({
               <div style={{ color: "var(--text)", fontSize: 13, fontWeight: 600 }}>{t("sessionSidebar.explorer")}</div>
               <div style={{ color: "var(--text-dim)", fontSize: 11, lineHeight: 1.6, maxWidth: 260 }}>{t("sessionSidebar.selectProjectFirst")}</div>
             </div>
-          )}
+          ))}
         </div>
         {/* Git changes tab view — kept mounted so selection survives tab switches. */}
         <div style={{ display: rightView === "git" ? "flex" : "none", flexDirection: "column", flex: 1, minHeight: 0, overflow: "hidden" }}>
-          {explorerCwd ? (
+          {visitedViews.has("git") && (explorerCwd ? (
             <GitChangesPanel
               cwd={explorerCwd}
               refreshKey={explorerRefreshKey}
@@ -396,7 +407,7 @@ export const RightPanel = memo(function RightPanel({
               <div style={{ color: "var(--text)", fontSize: 13, fontWeight: 600 }}>{t("tabBar.git")}</div>
               <div style={{ color: "var(--text-dim)", fontSize: 11, lineHeight: 1.6, maxWidth: 260 }}>{t("sessionSidebar.selectProjectFirst")}</div>
             </div>
-          )}
+          ))}
         </div>
         {/* Keep open viewers mounted so switching tabs preserves scroll and preview state. */}
         <div style={{ display: rightView === "file" ? "block" : "none", flex: 1, minHeight: 0, overflow: "hidden" }}>
@@ -407,6 +418,7 @@ export const RightPanel = memo(function RightPanel({
                 cwd={activeCwd ?? undefined}
                 sourceSessionId={tab.sourceSessionId}
                 gitRefreshKey={explorerRefreshKey}
+                active={tab.id === activeFileTabId && rightPanelOpen && rightView === "file"}
                 onMentionLines={tab.id === activeFileTabId && rightPanelOpen && rightView === "file" ? onMentionLines : undefined}
                 onOpenFile={(filePath) => onOpenFile(
                   filePath,

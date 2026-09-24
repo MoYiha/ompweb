@@ -55,6 +55,7 @@ function SidebarIconButton({
   return (
     <button
       type="button"
+      className="sidebar-icon-button"
       aria-label={label}
       title={title ?? label}
       onClick={onClick}

@@ -611,14 +611,18 @@ export function ConfirmDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         ariaLabel={typeof title === "string" ? title : undefined}
-        style={{ width: 420, maxWidth: "min(92vw, 420px)", padding: 22 }}
+        style={{ width: 420, maxWidth: "min(92vw, 420px)", padding: 22, display: "flex", flexDirection: "column", overflow: "hidden" }}
       >
         <DialogTitle>{title}</DialogTitle>
         <div style={{ height: 8 }} />
         {description && (
           <p
             style={{
-              margin: "0 0 18px",
+              flex: "1 1 auto",
+              minHeight: 0,
+              overflowY: "auto",
+              whiteSpace: "pre-wrap",
+              margin: "0 0 12px",
               fontSize: 13,
               lineHeight: 1.55,
               color: "var(--text-muted)",
@@ -627,9 +631,10 @@ export function ConfirmDialog({
             {description}
           </p>
         )}
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+        <div className="dialog-actions" style={{ display: "flex", justifyContent: "flex-end", gap: 8, flexShrink: 0, paddingTop: 4 }}>
           <button
             type="button"
+            className="dialog-action"
             onClick={() => onOpenChange(false)}
             style={{
               padding: "6px 14px",
@@ -645,6 +650,7 @@ export function ConfirmDialog({
           </button>
           <button
             type="button"
+            className="dialog-action"
             disabled={busy}
             onClick={onConfirm}
             style={{
