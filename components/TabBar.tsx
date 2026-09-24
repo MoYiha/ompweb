@@ -53,7 +53,8 @@ export function TabBar({ tabs, activeTabId, onSelectTab, onCloseTab, explorerSel
     <div
       ref={listRef}
       role="tablist"
-      aria-label="Open files"
+      aria-label={t("appShell.filePanel")}
+      aria-orientation="horizontal"
       className="tabbar-scroll"
       style={{
         display: "flex",
@@ -73,6 +74,7 @@ export function TabBar({ tabs, activeTabId, onSelectTab, onCloseTab, explorerSel
           tabIndex={explorerSelected ? 0 : -1}
           aria-selected={explorerSelected}
           aria-label={t("sessionSidebar.explorer")}
+          aria-controls="workspace-file-panel-explorer"
           title={explorerBadge > 0 ? t("sessionSidebar.explorerChanged", { count: explorerBadge }) : t("sessionSidebar.explorer")}
           onKeyDown={(event) => {
             if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onSelectExplorer(); }
@@ -152,6 +154,7 @@ export function TabBar({ tabs, activeTabId, onSelectTab, onCloseTab, explorerSel
           tabIndex={gitSelected ? 0 : -1}
           aria-selected={gitSelected}
           aria-label={t("tabBar.git")}
+          aria-controls="workspace-file-panel-git"
           title={gitBadge > 0 ? t("sessionSidebar.explorerChanged", { count: gitBadge }) : t("tabBar.git")}
           onKeyDown={(event) => {
             if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onSelectGit(); }
@@ -229,6 +232,7 @@ export function TabBar({ tabs, activeTabId, onSelectTab, onCloseTab, explorerSel
             tabIndex={isActive ? 0 : -1}
             aria-selected={isActive}
             aria-label={tab.filePath}
+            aria-controls="workspace-file-panel-file"
             onKeyDown={(event) => {
               if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onSelectTab(tab.id); }
               if (event.key === "Delete" || event.key === "Backspace") { event.preventDefault(); onCloseTab(tab.id); }
@@ -305,6 +309,7 @@ export function TabBar({ tabs, activeTabId, onSelectTab, onCloseTab, explorerSel
               {tab.label}
             </span>
             <button
+              type="button"
               onClick={(e) => { e.stopPropagation(); onCloseTab(tab.id); }}
               tabIndex={-1}
               className="tabbar-close ui-focus-ring"

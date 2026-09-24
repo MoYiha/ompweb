@@ -269,6 +269,9 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
   const historyListboxId = `${composerId}-history`;
   const slashListboxId = `${composerId}-slash`;
   const atListboxId = `${composerId}-at`;
+  const plusMenuId = `${composerId}-plus-menu`;
+  const modelPickerId = `${composerId}-model-picker`;
+  const thinkingMenuId = `${composerId}-thinking-menu`;
   const { t, tn, locale } = useI18n();
   const modelCollator = React.useMemo(
     () => new Intl.Collator(locale, { numeric: true, sensitivity: "base" }),
@@ -2406,7 +2409,8 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
             onPaste={handlePaste}
             placeholder={t("chatInput.placeholder")}
             aria-label={t("chatInput.composerLabel")}
-            aria-expanded={Boolean(composerMenuId)}
+            role={composerMenuId ? "combobox" : undefined}
+            aria-expanded={composerMenuId ? true : undefined}
             aria-controls={composerMenuId}
             aria-activedescendant={composerActiveDescendant}
             aria-autocomplete="list"
@@ -2445,6 +2449,7 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
               <button
                 onClick={() => setPlusMenuOpen((v) => !v)}
                 title={t("chatInput.plusMenu")}
+                aria-controls={plusMenuId}
                 aria-label={t("chatInput.plusMenu")}
                 aria-expanded={plusMenuOpen}
                 aria-haspopup="menu"
@@ -2465,6 +2470,8 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
               </button>
               {plusMenuOpen && (
                 <div
+                  id={plusMenuId}
+                  aria-orientation="vertical"
                   className="picker-panel"
                   role="menu"
                   aria-label={t("chatInput.plusMenu")}
@@ -2482,6 +2489,7 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
                   </div>
                   <button
                     role="menuitem"
+                    type="button"
                     onClick={() => { setPlusMenuOpen(false); fileInputRef.current?.click(); }}
                     disabled={isStreaming}
                     title={t("chatInput.attachFile")}
@@ -2500,6 +2508,7 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
                     <>
                       <button
                         role="menuitem"
+                        type="button"
                         aria-expanded={plusExpanded === "tools"}
                         onClick={() => setPlusExpanded((v) => (v === "tools" ? null : "tools"))}
                         title={t("chatInput.changeToolPresetTitle", { preset: toolPreset ?? "full" })}
@@ -2521,6 +2530,7 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
                           <button
                             className="picker-row"
                             role="menuitemradio"
+                            type="button"
                             aria-checked={isActive}
                             data-active={isActive}
                             key={opt.value}
@@ -2541,6 +2551,7 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
                     <>
                       <button
                         role="menuitem"
+                        type="button"
                         aria-expanded={plusExpanded === "advisor"}
                         onClick={() => setPlusExpanded((v) => (v === "advisor" ? null : "advisor"))}
                         title={advisorEnabled ? t("chatInput.advisorDisableTitle", { model: advisorModel?.name ?? t("messageView.advisorLabel"), reasoning: advisorModel?.reasoning ?? t("chatInput.advisorReasoningDefault") }) : t("chatInput.advisorEnableTitle")}
@@ -2560,6 +2571,7 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
                         <button
                           className="picker-row"
                           role="menuitem"
+                          type="button"
                           onClick={() => { setPlusMenuOpen(false); onAdvisorChange(!advisorEnabled); }}
                           title={advisorEnabled ? t("chatInput.advisorDisableTitle", { model: advisorModel?.name ?? t("messageView.advisorLabel"), reasoning: advisorModel?.reasoning ?? t("chatInput.advisorReasoningDefault") }) : t("chatInput.advisorEnableTitle")}
                           style={{ paddingLeft: 30 }}
@@ -2613,6 +2625,7 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
                     : showModelsLoading ? t("chatInput.loadingModels") : t("chatInput.noAvailableModels")}
                   aria-expanded={modelDropdownOpen}
                   aria-haspopup="dialog"
+                  aria-controls={modelPickerId}
                 >
                   <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
                     <rect x="4" y="4" width="16" height="16" rx="2" />
@@ -2631,6 +2644,9 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
                 </button>
                 {modelDropdownOpen && (
                   <div
+                    id={modelPickerId}
+                    role="dialog"
+                    aria-label={t("chatInput.modelsLabel")}
                     ref={modelDropdownPanelRef}
                     className="picker-panel"
                     style={{
@@ -2687,6 +2703,7 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
                   onClick={() => setThinkingDropdownOpen((v) => !v)}
                   disabled={isStreaming}
                   title={t("chatInput.changeReasoningTitle", { level: thinkingDisplayLabel })}
+                  aria-controls={thinkingMenuId}
                   aria-label={`${t("chatInput.changeReasoning")}: ${thinkingDisplayLabel}`}
                   aria-expanded={thinkingDropdownOpen}
                   aria-haspopup="menu"
@@ -2709,6 +2726,8 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
                 </button>
                 {thinkingDropdownOpen && (
                   <div
+                    id={thinkingMenuId}
+                    aria-label={t("chatInput.reasoningLabel")}
                     className="picker-panel"
                     role="menu"
                     style={{

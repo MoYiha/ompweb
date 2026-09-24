@@ -329,7 +329,7 @@ export const RightPanel = memo(function RightPanel({
         </div>
 
         {/* Explorer tab view — kept mounted so expansion survives tab switches. */}
-        <div style={{ display: rightView === "explorer" ? "flex" : "none", flexDirection: "column", flex: 1, minHeight: 0, overflow: "hidden" }}>
+        <div id="workspace-file-panel-explorer" role="tabpanel" aria-label={t("sessionSidebar.explorer")} style={{ display: rightView === "explorer" ? "flex" : "none", flexDirection: "column", flex: 1, minHeight: 0, overflow: "hidden" }}>
           {visitedViews.has("explorer") && (explorerCwd ? (
             <>
               <div
@@ -398,7 +398,7 @@ export const RightPanel = memo(function RightPanel({
           ))}
         </div>
         {/* Git changes tab view — kept mounted so selection survives tab switches. */}
-        <div style={{ display: rightView === "git" ? "flex" : "none", flexDirection: "column", flex: 1, minHeight: 0, overflow: "hidden" }}>
+        <div id="workspace-file-panel-git" role="tabpanel" aria-label={t("tabBar.git")} style={{ display: rightView === "git" ? "flex" : "none", flexDirection: "column", flex: 1, minHeight: 0, overflow: "hidden" }}>
           {visitedViews.has("git") && (explorerCwd ? (
             <GitChangesPanel
               cwd={explorerCwd}
@@ -416,7 +416,7 @@ export const RightPanel = memo(function RightPanel({
           ))}
         </div>
         {/* Keep open viewers mounted so switching tabs preserves scroll and preview state. */}
-        <div style={{ display: rightView === "file" ? "block" : "none", flex: 1, minHeight: 0, overflow: "hidden" }}>
+        <div id="workspace-file-panel-file" role="tabpanel" aria-label={activeFileTab?.filePath ?? t("appShell.filePanel")} style={{ display: rightView === "file" ? "block" : "none", flex: 1, minHeight: 0, overflow: "hidden" }}>
           {fileTabs.length > 0 ? fileTabs.map((tab) => (
             <div key={tab.id} style={{ display: tab.id === activeFileTabId ? "block" : "none", height: "100%" }}>
               <FileViewer

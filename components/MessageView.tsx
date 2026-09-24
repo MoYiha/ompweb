@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useState, useId, useRef, useEffect, useMemo, useCallback, type ComponentProps } from "react";
+import { memo, useState, useId, useRef, useEffect, useLayoutEffect, useMemo, useCallback, type ComponentProps } from "react";
 import { Copy, Check, GitFork, CornerUpLeft, ChevronRight, ChevronDown, Brain, EyeOff, CircleAlert, CircleSlash, LoaderCircle, FileText, Search, FileEdit, Terminal, CheckSquare, Bot, Code2, Globe, MessagesSquare, Wrench, Volume2, Square } from "lucide-react";
 import { MarkdownBody } from "./MarkdownBody";
 import { MessageCopyActions } from "./MessageCopyActions";
@@ -349,6 +349,8 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
 }) {
   const { t, locale } = useI18n();
   const bodyRef = useRef<HTMLDivElement>(null);
+  const [expanded, setExpanded] = useState(false);
+  const [hasOverflow, setHasOverflow] = useState(false);
 
   const content =
     typeof message.content === "string"
@@ -362,6 +364,19 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
     typeof message.content === "string"
       ? []
       : message.content.filter((b): b is ImageContent => b.type === "image");
+  useLayoutEffect(() => {
+    const element = bodyRef.current;
+    if (!element) return;
+    const updateOverflow = () => setHasOverflow(element.scrollHeight > element.clientHeight + 1);
+    updateOverflow();
+    element.addEventListener("scroll", updateOverflow, { passive: true });
+    const observer = typeof ResizeObserver !== "undefined" ? new ResizeObserver(updateOverflow) : null;
+    observer?.observe(element);
+    return () => {
+      element.removeEventListener("scroll", updateOverflow);
+      observer?.disconnect();
+    };
+  }, [content, imageBlocks.length]);
 
   const time = formatTime(message.timestamp, locale);
   const canFork = !!entryId && !!onFork;
@@ -376,6 +391,7 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
           className="chat-message-card"
           ref={bodyRef}
           data-selection-scope="message"
+          data-overflow={hasOverflow && !expanded ? "true" : undefined}
           tabIndex={-1}
           style={{
             maxWidth: "100%",
@@ -390,7 +406,7 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
             lineHeight: "var(--chat-line-height)",
             color: "var(--text)",
             wordBreak: "break-word",
-            maxHeight: USER_BUBBLE_MAX_HEIGHT,
+            maxHeight: expanded ? "none" : USER_BUBBLE_MAX_HEIGHT,
             overflowY: "auto",
           }}
         >
@@ -413,6 +429,18 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
           )}
           {content && <div data-message-text><SafeMarkdownBody className="markdown-user-message" cwd={cwd} onOpenFile={onOpenFile}>{content}</SafeMarkdownBody></div>}
         </div>
+        {hasOverflow && (
+          <button
+            type="button"
+            className="message-overflow-toggle ui-focus-ring"
+            aria-expanded={expanded}
+            aria-label={expanded ? t("messageView.collapseInput") : t("messageView.showFullInput")}
+            onClick={() => setExpanded((value) => !value)}
+          >
+            <span>{expanded ? t("messageView.collapseInput") : t("messageView.showFullInput")}</span>
+            <ChevronDown size={12} strokeWidth={1.8} aria-hidden="true" style={{ transform: expanded ? "rotate(180deg)" : "none" }} />
+          </button>
+        )}
 
         {/* Bottom row: action buttons + timestamp — inside the bubble's column,
             spanning its width, so the timestamp aligns with its right edge. */}

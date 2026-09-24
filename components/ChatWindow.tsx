@@ -1235,6 +1235,10 @@ export function ChatWindow({ session, newSessionCwd, newSessionWorkspace, toolCa
                 <OmpRuntimeVersion />
               </div>
             </div>
+            <div className="empty-session-intro">
+              <h1 className="display-serif">{t("appShell.newSessionTitle")}</h1>
+              <p>{t("appShell.newSessionDescription")}</p>
+            </div>
             <div style={{ padding: `0 ${CHAT_COLUMN_PADDING}px` }}>{newSessionWorkspace}</div>
             <NoticeShelf notices={notices} onDismiss={dismissNotice} align="right" />
             {chatInputElement}

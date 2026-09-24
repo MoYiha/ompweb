@@ -175,6 +175,8 @@
   "appShell.loading": "読み込み中…",
   "appShell.models": "モデル",
   "appShell.newSession": "新しいセッション",
+  "appShell.newSessionTitle": "何から始めますか？",
+  "appShell.newSessionDescription": "ワークスペースを選び、行いたい変更を説明してください。",
   "appShell.noFileOpen": "ファイルが開かれていません",
   "appShell.openingWorkspace": "ワークスペースを開いています...",
   "appShell.plugins": "プラグイン",

@@ -175,6 +175,8 @@
   "appShell.loading": "Loading…",
   "appShell.models": "Models",
   "appShell.newSession": "New session",
+  "appShell.newSessionTitle": "What should we work on?",
+  "appShell.newSessionDescription": "Choose a workspace, then describe the change you want to make.",
   "appShell.noFileOpen": "No file open",
   "appShell.noFileOpenHint": "Open a file from the Explorer — then @mention it into the chat, copy its path, or compare it against HEAD.",
   "appShell.mentionFileInChat": "Mention file in chat (@)",
