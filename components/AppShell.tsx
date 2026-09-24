@@ -23,6 +23,7 @@ import { translate, useI18n } from "@/lib/i18n";
 import { formatApiError } from "@/lib/i18n/api-error";
 import { formatGenerationSpeed } from "@/lib/generation-speed";
 import { useIsMobile } from "@/hooks/useIsMobile";
+import { useIsCompactOverlay } from "@/hooks/useIsCompactOverlay";
 import { copyText } from "@/lib/clipboard";
 import { encodeFilePathForApi, getFileName, getRelativeFilePath } from "@/lib/file-paths";
 import { buildAtMentionText, buildFileAtMentionsText, buildFileLineMentionText } from "@/lib/file-fuzzy";
@@ -100,6 +101,7 @@ export function AppShell() {
   const [initialNavigation] = useState(() => getInitialNavigation(searchParams));
   const { t, locale } = useI18n();
   const isMobile = useIsMobile();
+  const isCompactOverlay = useIsCompactOverlay();
   const [selectedSession, setSelectedSession] = useState<SessionInfo | null>(null);
   // When user clicks +, we only store the cwd — no fake session id
   const [newSessionCwd, setNewSessionCwd] = useState<string | null>(null);
@@ -942,9 +944,9 @@ export function AppShell() {
   const [rightPanelResizing, setRightPanelResizing] = useState(false);
   const rightPanelRef = useModalDialog<HTMLDivElement>({
     onClose: () => setRightPanelOpen(false),
-    active: isMobile && rightPanelOpen && !settingsTab,
+    active: isCompactOverlay && rightPanelHasOpened && rightPanelOpen && !settingsTab,
   });
-  const rightPanelIsModal = isMobile && rightPanelOpen && !settingsTab;
+  const rightPanelIsModal = isCompactOverlay && rightPanelHasOpened && rightPanelOpen && !settingsTab;
   const pendingRightPanelWidthRef = useRef<number | null>(null);
   const rightResizeHandlersRef = useRef<{ onMove: (ev: MouseEvent) => void; onUp: () => void } | null>(null);
   useEffect(() => {
@@ -2247,6 +2249,7 @@ export function AppShell() {
         explorerIsRepo={explorerIsRepo}
         explorerRefreshing={explorerRefreshing}
         isMobile={isMobile}
+        isCompactOverlay={isCompactOverlay}
         onOpenFile={handleOpenFile}
         onSelectFileTab={handleSelectFileTab}
         onCloseFileTab={handleCloseFileTab}

@@ -48,6 +48,7 @@ interface Props {
   explorerIsRepo: boolean;
   explorerRefreshing: boolean;
   isMobile: boolean;
+  isCompactOverlay: boolean;
   onOpenFile: (filePath: string, fileName: string, sourceSessionId?: string | null) => void;
   onSelectFileTab: (id: string) => void;
   onCloseFileTab: (id: string) => void;
@@ -97,6 +98,7 @@ export const RightPanel = memo(function RightPanel({
   explorerIsRepo,
   explorerRefreshing,
   isMobile,
+  isCompactOverlay,
   onOpenFile,
   onSelectFileTab,
   onCloseFileTab,
@@ -164,18 +166,18 @@ export const RightPanel = memo(function RightPanel({
         id="workspace-file-panel"
         ref={rightPanelRef}
         className={`right-panel-container${rightPanelOpen ? " right-panel-open" : " right-panel-closed"}${rightPanelResizing ? " right-panel-resizing" : ""}`}
-        role={isMobile ? "dialog" : undefined}
-        aria-modal={isMobile ? true : undefined}
+        role={isCompactOverlay ? "dialog" : undefined}
+        aria-modal={isCompactOverlay ? true : undefined}
         aria-label={t("appShell.filePanel")}
         aria-hidden={!rightPanelOpen}
-        tabIndex={isMobile ? -1 : undefined}
+        tabIndex={isCompactOverlay ? -1 : undefined}
         inert={!rightPanelOpen ? true : undefined}
         style={{
           display: "flex",
           flexDirection: "column",
           borderLeft: "1px solid var(--border)",
           background: "var(--bg)",
-          zIndex: isMobile ? 210 : undefined,
+          zIndex: isCompactOverlay ? 210 : undefined,
           ...(!isMobile && rightPanelWidth !== null ? { "--right-panel-width": `${rightPanelWidth}px` } : {}),
         }}
       >
