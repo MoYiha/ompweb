@@ -272,6 +272,21 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
   const plusMenuId = `${composerId}-plus-menu`;
   const modelPickerId = `${composerId}-model-picker`;
   const thinkingMenuId = `${composerId}-thinking-menu`;
+  const moveMenuFocus = useCallback((event: React.KeyboardEvent<HTMLElement>) => {
+    if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+    event.preventDefault();
+    const items = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>("button:not([disabled])"));
+    if (items.length === 0) return;
+    const current = items.indexOf(document.activeElement as HTMLButtonElement);
+    const next = event.key === "Home"
+      ? 0
+      : event.key === "End"
+        ? items.length - 1
+        : event.key === "ArrowDown"
+          ? (current < 0 ? 0 : (current + 1) % items.length)
+          : (current <= 0 ? items.length - 1 : current - 1);
+    items[next]?.focus();
+  }, []);
   const { t, tn, locale } = useI18n();
   const modelCollator = React.useMemo(
     () => new Intl.Collator(locale, { numeric: true, sensitivity: "base" }),
@@ -313,6 +328,8 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const modelDropdownPanelRef = useRef<HTMLDivElement>(null);
+  const modelTriggerRef = useRef<HTMLButtonElement>(null);
+  const modelWasOpenRef = useRef(false);
   const modelSearchInputRef = useRef<HTMLInputElement>(null);
   const thinkingDropdownRef = useRef<HTMLDivElement>(null);
   const contextWrapRef = useRef<HTMLDivElement>(null);
@@ -1520,10 +1537,26 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
   useEffect(() => {
     if (!modelDropdownOpen) {
       setModelSearchQuery("");
+      if (!modelWasOpenRef.current) return;
+      modelWasOpenRef.current = false;
+      requestAnimationFrame(() => {
+        const active = document.activeElement;
+        if (active instanceof HTMLElement && active !== document.body && active !== modelTriggerRef.current) return;
+        modelTriggerRef.current?.focus();
+      });
       return;
     }
+    modelWasOpenRef.current = true;
     requestAnimationFrame(() => modelSearchInputRef.current?.focus());
   }, [modelDropdownOpen]);
+  useEffect(() => {
+    if (!plusMenuOpen) return;
+    requestAnimationFrame(() => plusMenuRef.current?.querySelector<HTMLButtonElement>('[role="menuitem"]:not([disabled])')?.focus());
+  }, [plusMenuOpen]);
+  useEffect(() => {
+    if (!thinkingDropdownOpen) return;
+    requestAnimationFrame(() => thinkingDropdownRef.current?.querySelector<HTMLButtonElement>('[role="menuitemradio"]:not([disabled])')?.focus());
+  }, [thinkingDropdownOpen]);
 
   // Close dropdowns on outside click
   useEffect(() => {
@@ -2455,7 +2488,7 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
                 aria-haspopup="menu"
                 style={{
                   display: "flex", alignItems: "center", justifyContent: "center",
-                  width: 28, height: 28, padding: 0,
+                  width: "var(--control-height-sm)", height: "var(--control-height-sm)", padding: 0,
                   background: plusMenuOpen ? "var(--bg-hover)" : "none",
                   border: "none",
                   borderRadius: 7,
@@ -2475,7 +2508,15 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
                   className="picker-panel"
                   role="menu"
                   aria-label={t("chatInput.plusMenu")}
-                  onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); setPlusMenuOpen(false); } }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Escape") {
+                      event.stopPropagation();
+                      setPlusMenuOpen(false);
+                      requestAnimationFrame(() => plusMenuRef.current?.querySelector<HTMLButtonElement>("button")?.focus());
+                      return;
+                    }
+                    moveMenuFocus(event);
+                  }}
                   style={{
                     position: "absolute", left: 0,
                     zIndex: 100, width: 230, maxWidth: "calc(100vw - 32px)",
@@ -2590,6 +2631,7 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
             {(modelOptions.length > 0 || currentName || modelError || showModelsLoading) && onModelChange && (
               <div ref={dropdownRef} className="composer-model-control" style={{ position: "relative", minWidth: 0 }}>
                 <button
+                  ref={modelTriggerRef}
                   onClick={() => setModelDropdownOpen((v) => !v)}
                   disabled={modelSelectorDisabled}
                   aria-label={`${t("chatInput.changeModel")}: ${currentName ?? (modelOptions.length > 0
@@ -2597,7 +2639,7 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
                     : showModelsLoading ? t("chatInput.loadingModels") : t("chatInput.noModels"))}`}
                   style={{
                     display: "flex", alignItems: "center", gap: 5,
-                    height: 28,
+                    height: "var(--control-height-sm)",
                     maxWidth: "100%",
                     width: "100%",
                     padding: "0 4px",
@@ -2607,7 +2649,7 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
                     borderRadius: 7,
                     color: "var(--text-muted)",
                     cursor: modelSelectorDisabled ? "not-allowed" : "pointer",
-                    fontSize: 12,
+                    fontSize: "var(--text-sm)",
                     opacity: modelSelectorDisabled ? 0.5 : 1,
                     transition: "background var(--dur-fast) var(--ease-out-warm), color var(--dur-fast) var(--ease-out-warm)",
                   }}
@@ -2709,9 +2751,9 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
                   aria-haspopup="menu"
                   style={{
                     display: "flex", alignItems: "center", gap: 5,
-                    height: 28, width: "100%", padding: "0 4px", background: thinkingDropdownOpen ? "var(--bg-hover)" : "none",
+                    height: "var(--control-height-sm)", width: "100%", padding: "0 4px", background: thinkingDropdownOpen ? "var(--bg-hover)" : "none",
                     border: "none", borderRadius: 7, color: "var(--text-muted)", cursor: isStreaming ? "not-allowed" : "pointer",
-                    opacity: isStreaming ? 0.5 : 1, fontSize: 12,
+                    opacity: isStreaming ? 0.5 : 1, fontSize: "var(--text-sm)",
                     transition: "background var(--dur-fast) var(--ease-out-warm), color var(--dur-fast) var(--ease-out-warm)",
                   }}
                   onMouseEnter={(e) => { if (!isStreaming) { e.currentTarget.style.background = "var(--bg-hover)"; e.currentTarget.style.color = "var(--text)"; } }}
@@ -2730,6 +2772,15 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
                     aria-label={t("chatInput.reasoningLabel")}
                     className="picker-panel"
                     role="menu"
+                    onKeyDown={(event) => {
+                      if (event.key === "Escape") {
+                        event.stopPropagation();
+                        setThinkingDropdownOpen(false);
+                        requestAnimationFrame(() => thinkingDropdownRef.current?.querySelector<HTMLButtonElement>("button")?.focus());
+                        return;
+                      }
+                      moveMenuFocus(event);
+                    }}
                     style={{
                       position: "absolute", bottom: "calc(100% + 6px)", left: 0,
                       zIndex: 100, width: 190, maxWidth: "calc(100vw - 32px)",
@@ -2789,7 +2840,7 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
                 aria-pressed={fastModeEnabled}
                 style={{
                   display: "flex", alignItems: "center", gap: 5,
-                  height: 28,
+                  height: "var(--control-height-sm)",
                   padding: "0 8px",
                   background: fastModeEnabled ? "var(--bg-selected)" : "none",
                   border: "none",
@@ -2797,7 +2848,7 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
                   color: fastModeEnabled && fastModeActive === false ? "var(--status-warning)" : fastModeEnabled ? "var(--accent)" : "var(--text-muted)",
                   cursor: isStreaming ? "not-allowed" : "pointer",
                   opacity: isStreaming ? 0.5 : 1,
-                  fontSize: 12,
+                  fontSize: "var(--text-sm)",
                   fontWeight: 600,
                   transition: "background var(--dur-fast) var(--ease-out-warm), color var(--dur-fast) var(--ease-out-warm)",
                 }}

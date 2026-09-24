@@ -516,6 +516,19 @@ html[data-theme="tokyo-night"], html.theme-tokyo-night {
   --control-height: 32px;
   --control-height-lg: 36px;
   --control-padding-inline: 10px;
+  --text-2xs: 10px;
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-md: 13px;
+  --text-lg: 15px;
+  --text-body: 12.5px;
+  --text-md-strong: 13.5px;
+  --text-xl: 18px;
+  --text-2xl: 22px;
+  --row-height-compact: 30px;
+  --tab-height: var(--control-height-lg);
+  --toolbar-control-height: var(--control-height-sm);
+  --icon-control-size-compact: 24px;
   --border-strong: color-mix(in srgb, var(--border) 76%, var(--text) 24%);
   --focus-ring: 0 0 0 2px color-mix(in srgb, var(--accent) 22%, transparent);
   /* Warm diffuse shadows (light); dark theme swaps to ambient glow below. */

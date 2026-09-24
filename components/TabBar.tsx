@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { Folder, GitBranch, X } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
 import { getFileIcon } from "./FileIcons";
@@ -33,6 +33,29 @@ export function TabBar({ tabs, activeTabId, onSelectTab, onCloseTab, explorerSel
   const { t } = useI18n();
   const [hoveredClose, setHoveredClose] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const navigableTabIds = [
+    ...(onSelectExplorer ? ["explorer"] : []),
+    ...(onSelectGit ? ["git"] : []),
+    ...tabs.map((tab) => tab.id),
+  ];
+  const selectTabById = (id: string) => {
+    if (id === "explorer") onSelectExplorer?.();
+    else if (id === "git") onSelectGit?.();
+    else onSelectTab(id);
+  };
+  const focusTabById = (id: string) => {
+    requestAnimationFrame(() => listRef.current?.querySelector<HTMLElement>(`[data-tab-id="${CSS.escape(id)}"]`)?.focus());
+  };
+  const navigateTab = (event: KeyboardEvent<HTMLElement>, currentId: string) => {
+    if (event.key !== "ArrowRight" && event.key !== "ArrowLeft") return;
+    event.preventDefault();
+    if (navigableTabIds.length === 0) return;
+    const current = navigableTabIds.indexOf(currentId);
+    const nextIndex = (current + (event.key === "ArrowRight" ? 1 : -1) + navigableTabIds.length) % navigableTabIds.length;
+    const next = navigableTabIds[nextIndex];
+    selectTabById(next);
+    focusTabById(next);
+  };
 
   // Keep the active tab visible when the bar overflows horizontally.
   useEffect(() => {
@@ -62,7 +85,7 @@ export function TabBar({ tabs, activeTabId, onSelectTab, onCloseTab, explorerSel
         background: "var(--bg-panel)",
         overflowX: "auto",
         flexShrink: 0,
-        height: 36,
+        height: "var(--tab-height)",
       }}
     >
       {onSelectExplorer && (
@@ -78,23 +101,19 @@ export function TabBar({ tabs, activeTabId, onSelectTab, onCloseTab, explorerSel
           title={explorerBadge > 0 ? t("sessionSidebar.explorerChanged", { count: explorerBadge }) : t("sessionSidebar.explorer")}
           onKeyDown={(event) => {
             if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onSelectExplorer(); }
-            if (event.key === "ArrowRight" && tabs.length > 0) {
-              event.preventDefault();
-              onSelectTab(tabs[0].id);
-              listRef.current?.querySelector<HTMLElement>(`[data-tab-id="${CSS.escape(tabs[0].id)}"]`)?.focus();
-            }
+            navigateTab(event, "explorer");
           }}
           style={{
             display: "flex",
             alignItems: "center",
             gap: 6,
-            height: 36,
+            height: "var(--tab-height)",
             paddingLeft: 12,
             paddingRight: 10,
             borderRight: "1px solid var(--border)",
             background: explorerSelected ? "var(--bg)" : "var(--bg-panel)",
             cursor: "pointer",
-            fontSize: 12,
+            fontSize: "var(--text-sm)",
             color: explorerSelected ? "var(--text)" : "var(--text-muted)",
             whiteSpace: "nowrap",
             flexShrink: 0,
@@ -158,18 +177,19 @@ export function TabBar({ tabs, activeTabId, onSelectTab, onCloseTab, explorerSel
           title={gitBadge > 0 ? t("sessionSidebar.explorerChanged", { count: gitBadge }) : t("tabBar.git")}
           onKeyDown={(event) => {
             if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onSelectGit(); }
+            navigateTab(event, "git");
           }}
           style={{
             display: "flex",
             alignItems: "center",
             gap: 6,
-            height: 36,
+            height: "var(--tab-height)",
             paddingLeft: 12,
             paddingRight: 10,
             borderRight: "1px solid var(--border)",
             background: gitSelected ? "var(--bg)" : "var(--bg-panel)",
             cursor: "pointer",
-            fontSize: 12,
+            fontSize: "var(--text-sm)",
             color: gitSelected ? "var(--text)" : "var(--text-muted)",
             whiteSpace: "nowrap",
             flexShrink: 0,
@@ -236,18 +256,7 @@ export function TabBar({ tabs, activeTabId, onSelectTab, onCloseTab, explorerSel
             onKeyDown={(event) => {
               if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onSelectTab(tab.id); }
               if (event.key === "Delete" || event.key === "Backspace") { event.preventDefault(); onCloseTab(tab.id); }
-              if (event.key === "ArrowRight" || event.key === "ArrowLeft") {
-                event.preventDefault();
-                const index = tabs.findIndex((item) => item.id === tab.id);
-                const next = tabs[(index + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length];
-                if (next) {
-                  onSelectTab(next.id);
-                  // Roving tabindex: move DOM focus to the newly selected tab
-                  // so the visible focus ring follows the selection.
-                  const nextEl = listRef.current?.querySelector<HTMLElement>(`[data-tab-id="${CSS.escape(next.id)}"]`);
-                  nextEl?.focus();
-                }
-              }
+              navigateTab(event, tab.id);
             }}
             onMouseDown={(e) => {
               if (e.button === 1) e.preventDefault();
@@ -262,13 +271,13 @@ export function TabBar({ tabs, activeTabId, onSelectTab, onCloseTab, explorerSel
               display: "flex",
               alignItems: "center",
               gap: 6,
-              height: 36,
+              height: "var(--tab-height)",
               paddingLeft: 12,
               paddingRight: 6,
               borderRight: "1px solid var(--border)",
               background: isActive ? "var(--bg)" : "var(--bg-panel)",
               cursor: "pointer",
-              fontSize: 12,
+              fontSize: "var(--text-sm)",
               color: isActive ? "var(--text)" : "var(--text-muted)",
               whiteSpace: "nowrap",
               maxWidth: 180,
@@ -317,7 +326,7 @@ export function TabBar({ tabs, activeTabId, onSelectTab, onCloseTab, explorerSel
               onMouseLeave={() => setHoveredClose(null)}
               style={{
                 display: "flex", alignItems: "center", justifyContent: "center",
-                width: 24, height: 24,
+                width: "var(--icon-control-size-compact)", height: "var(--icon-control-size-compact)",
                 background: hoveredClose === tab.id ? "var(--bg-hover)" : "transparent",
                 border: "none",
                 borderRadius: "var(--radius-control)",

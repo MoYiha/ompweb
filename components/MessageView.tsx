@@ -14,6 +14,7 @@ import { useCopyFeedback } from "@/hooks/useCopyFeedback";
 import { formatCompactNumber } from "@/lib/format";
 import { TaskResultPanel } from "./MessageView-task-panel";
 import { HubResultPanel } from "./MessageView-hub-panel";
+import { isMessageOverflowing } from "@/lib/message-overflow";
 import { getResultDiff, PairedDiffResult, PairedResult } from "./MessageView-diff-view";
 import {
   getToolPreview,
@@ -367,13 +368,14 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
   useLayoutEffect(() => {
     const element = bodyRef.current;
     if (!element) return;
-    const updateOverflow = () => setHasOverflow(element.scrollHeight > element.clientHeight + 1);
+    const observedElement = element;
+    const updateOverflow = () => setHasOverflow(isMessageOverflowing(observedElement));
     updateOverflow();
-    element.addEventListener("scroll", updateOverflow, { passive: true });
+    observedElement.addEventListener("scroll", updateOverflow, { passive: true });
     const observer = typeof ResizeObserver !== "undefined" ? new ResizeObserver(updateOverflow) : null;
-    observer?.observe(element);
+    observer?.observe(observedElement);
     return () => {
-      element.removeEventListener("scroll", updateOverflow);
+      observedElement.removeEventListener("scroll", updateOverflow);
       observer?.disconnect();
     };
   }, [content, imageBlocks.length]);
