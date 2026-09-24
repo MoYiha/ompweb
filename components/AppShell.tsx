@@ -1073,7 +1073,10 @@ export function AppShell() {
     setSettingsTab(null);
     // Re-picking the current conversation still closes/rearms the drawer,
     // without remounting the chat or disturbing its draft.
-    if (isMobile && !isRestore) setSidebarOpen(false);
+    if (isMobile && !isRestore) {
+      setSidebarOpen(false);
+      requestAnimationFrame(() => chatInputRef.current?.focus());
+    }
     if (!isRestore && session.id === selectedSession?.id) return;
     setNewSessionCwd(null);
     setSelectedSession(session);
@@ -1106,9 +1109,13 @@ export function AppShell() {
     setSystemPrompt(null);
     setSystemPromptLoading(false);
     setActiveTopPanel(null);
-    if (isMobile) setSidebarOpen(false);
+    if (isMobile) {
+      setSidebarOpen(false);
+      requestAnimationFrame(() => chatInputRef.current?.focus());
+    }
     router.replace("/", { scroll: false });
   }, [router, isMobile]);
+
 
   // Global keyboard shortcuts (handles Esc, Ctrl+Alt+N etc.)
   useGlobalKeyboardShortcuts({
@@ -1605,7 +1612,9 @@ export function AppShell() {
           box-shadow: none;
         }
       }
-    `}</style>
+    `}
+    </style>
+    <a href="#main-content" className="skip-link">{t("appShell.skipToContent")}</a>
     <div style={{ display: "flex", height: "100%", flex: 1, overflow: "hidden", background: "var(--bg)" }}>
       {/* Left sidebar: hidden on full-page Settings */}
       {!settingsTab && (
@@ -1625,10 +1634,10 @@ export function AppShell() {
         }}
       />
 
-      {/* Left sidebar */}
-      <div
+      <nav
         ref={sidebarContainerRef}
         className={`sidebar-container${sidebarOpen ? " sidebar-open" : " sidebar-closed"}${mobileSidebarReady ? "" : " sidebar-mobile-pending"}${sidebarResizing ? " sidebar-resizing" : ""}`}
+        aria-label={t("projects.heading")}
         aria-hidden={mobileSidebarReady && !sidebarOpen ? true : undefined}
         inert={mobileSidebarReady && !sidebarOpen ? true : undefined}
         style={{
@@ -1643,7 +1652,7 @@ export function AppShell() {
         }}
       >
         {sidebarContent}
-      </div>
+      </nav>
 
       {/* Resize handle — desktop only, hidden while the sidebar is closed */}
       {!isMobile && sidebarOpen && (
@@ -1676,7 +1685,7 @@ export function AppShell() {
       )}
 
       {/* Center: chat */}
-      <main style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
+      <main id="main-content" style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
         {settingsTab ? (
           <SettingsConfig
             activeTab={settingsTab}

@@ -3628,3 +3628,92 @@ html.dark .dropdown-surface :is(select, option) {
     width: 40% !important;
   }
 }
+
+/* Route fallback: preserve the shell silhouette while the client bundle wakes. */
+.route-fallback {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+}
+.route-fallback-sidebar {
+  display: flex;
+  width: 260px;
+  flex-shrink: 0;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 12px;
+  border-right: 1px solid var(--border);
+  background: var(--bg-panel);
+}
+.route-fallback-sidebar-title { width: 58%; height: 14px; }
+.route-fallback-sidebar-button { width: 100%; height: 38px; }
+.route-fallback-sidebar-list { display: grid; gap: 8px; margin-top: 8px; }
+.route-fallback-sidebar-row { width: 100%; height: 30px; }
+.route-fallback-main { display: flex; min-width: 0; flex: 1; flex-direction: column; }
+.route-fallback-topbar {
+  display: flex;
+  height: 36px;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-panel);
+}
+.route-fallback-topbar-control { width: 28px; height: 28px; }
+.route-fallback-topbar-title { width: min(260px, 40%); height: 18px; }
+.route-fallback-content {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 12px;
+  padding: 48px max(24px, 12vw);
+}
+.route-fallback-line { width: 100%; max-width: 680px; height: 14px; }
+.route-fallback-line-short { width: 42%; }
+.route-fallback-composer {
+  width: min(680px, 100%);
+  height: 116px;
+  margin-top: auto;
+  border-radius: var(--radius-card);
+}
+@media (max-width: 640px) {
+  .route-fallback-sidebar { display: none; }
+  .route-fallback-content { padding: 32px 16px; }
+}
+
+/* Keyboard users can bypass the persistent workspace chrome. */
+.skip-link {
+  position: fixed;
+  top: 8px;
+  left: 8px;
+  z-index: 4000;
+  padding: 8px 12px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-control);
+  background: var(--bg-panel);
+  color: var(--text);
+  box-shadow: var(--shadow-pop);
+  transform: translateY(-150%);
+  transition: transform var(--dur-fast) var(--ease-out-warm);
+}
+.skip-link:focus { transform: translateY(0); }
+@media (pointer: coarse) {
+  .composer-toolbar > button,
+  .composer-toolbar > div > button,
+  .composer-primary-action,
+  .shell-toolbar-btn,
+  .right-panel-toolbar [role="toolbar"] > button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
+
+/* Pagination restores history without replaying entrance motion. */
+.chat-message-card { animation: none; }
+.chat-message[data-live="true"] { animation: chat-message-in var(--dur-med) var(--ease-out-warm) both; }
+.chat-message { animation: none; }
+.chat-message-card:hover { box-shadow: none !important; }

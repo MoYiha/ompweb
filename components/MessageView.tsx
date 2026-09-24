@@ -381,9 +381,10 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
             maxWidth: "100%",
             minWidth: 0,
             background: "var(--user-bg)",
-            border: "1px solid color-mix(in srgb, var(--accent) 28%, transparent)",
+            border: "none",
+            borderLeft: "3px solid var(--accent)",
             borderRadius: "var(--radius-card)",
-            boxShadow: "var(--shadow-card)",
+            boxShadow: "none",
             padding: "8px 12px",
             fontSize: "var(--chat-user-font-size)",
             lineHeight: "var(--chat-line-height)",
@@ -614,6 +615,7 @@ function AssistantMessageView({
   return (
     <div
       className="chat-message"
+      data-live={isStreaming ? "true" : undefined}
       style={{ marginBottom: 6 }}
     >
       {/* Model label */}

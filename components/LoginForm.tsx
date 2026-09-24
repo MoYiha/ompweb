@@ -48,6 +48,7 @@ export function LoginForm() {
             Password
             <input
               id="web-password"
+              className="ui-focus-ring"
               type="password"
               value={password}
               onChange={(event) => setPassword(event.target.value)}
@@ -56,7 +57,7 @@ export function LoginForm() {
               required
               aria-invalid={error ? true : undefined}
               aria-describedby={error ? "password-error" : undefined}
-              style={{ width: "100%", padding: "9px 10px", border: `1px solid ${error ? "var(--status-error)" : "var(--border)"}`, borderRadius: "var(--radius-control)", background: "var(--bg)", color: "var(--text)", fontSize: 14, outline: "none", boxShadow: "none" }}
+              style={{ width: "100%", padding: "9px 10px", border: `1px solid ${error ? "var(--status-error)" : "var(--border)"}`, borderRadius: "var(--radius-control)", background: "var(--bg)", color: "var(--text)", fontSize: 14, transition: "border-color var(--dur-fast) var(--ease-out-warm), box-shadow var(--dur-fast) var(--ease-out-warm)" }}
             />
           </label>
           {error && <p id="password-error" role="alert" style={{ margin: 0, color: "var(--status-error)", fontSize: 12 }}>{error}</p>}

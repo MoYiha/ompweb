@@ -150,9 +150,12 @@ export const RightPanel = memo(function RightPanel({
         />
       )}
       {/* Right panel: file viewer — always mounted, width animated via CSS */}
-      <div
+      <aside
         ref={rightPanelRef}
         className={`right-panel-container${rightPanelOpen ? " right-panel-open" : " right-panel-closed"}${rightPanelResizing ? " right-panel-resizing" : ""}`}
+        aria-label={t("appShell.filePanel")}
+        aria-hidden={!rightPanelOpen}
+        inert={!rightPanelOpen ? true : undefined}
         style={{
           display: "flex",
           flexDirection: "column",
@@ -420,7 +423,7 @@ export const RightPanel = memo(function RightPanel({
             </div>
           )}
         </div>
-      </div>
+      </aside>
     </>
   );
 });

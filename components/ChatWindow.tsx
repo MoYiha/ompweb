@@ -604,7 +604,7 @@ export function ChatWindow({ session, newSessionCwd, newSessionWorkspace, toolCa
     subagents, subagentEvents, subagentTranscriptVersions, activeSubagentCount, currentTodoPhase, todoPhases,
     isNew,
     sessionIdRef, messagesEndRef, scrollContainerRef,
-    handleSend, handleAbort, handleFork, handleNavigate, handleModelChange,
+    handleSend, handleAbort, handleFork, handleNavigate, handleModelChange, retrySession,
     handleSteer, handleFollowUp, handlePromptWithStreamingBehavior, handleAbortCompaction, handleCompact,
     removeQueuedMessage, promoteQueuedToSteer,
     handleBuiltinSlashCommand, togglePreCompactionHistory,
@@ -1128,8 +1128,15 @@ export function ChatWindow({ session, newSessionCwd, newSessionWorkspace, toolCa
 
   if (error) {
     return (
-      <div role="alert" className="flex h-full items-center justify-center" style={{ color: "var(--accent-strong)", padding: "0 16px", textAlign: "center", fontSize: 13 }}>
-        {error}
+      <div role="alert" className="flex h-full flex-col items-center justify-center gap-3 px-4 text-center" style={{ color: "var(--accent-strong)", fontSize: 13 }}>
+        <div>{error}</div>
+        <button
+          type="button"
+          onClick={retrySession}
+          style={{ minHeight: 36, padding: "6px 14px", border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "var(--bg-panel)", color: "var(--text)", cursor: "pointer", fontWeight: 600, transition: "background var(--dur-fast) var(--ease-out-warm), transform var(--dur-fast) var(--ease-out-warm)" }}
+        >
+          {t("chatWindow.retry")}
+        </button>
       </div>
     );
   }
@@ -1243,7 +1250,7 @@ export function ChatWindow({ session, newSessionCwd, newSessionWorkspace, toolCa
         {/* Hide the Firefox scrollbar on desktop only: ChatMinimap provides the
             position indicator there, but on mobile there is no minimap and
             users need the scrollbar (Chrome's overlay scrollbar still shows). */}
-        <div ref={scrollContainerRef} data-selection-scope="chat" tabIndex={-1} className={`flex-1 overflow-y-auto pt-6` + (isMobile ? "" : " [scrollbar-width:none] [&::-webkit-scrollbar]:hidden")}>
+        <div ref={scrollContainerRef} data-selection-scope="chat" tabIndex={-1} role="log" aria-live="polite" aria-relevant="additions text" aria-label={t("chatWindow.conversation")} className={`flex-1 overflow-y-auto pt-6` + (isMobile ? "" : " [scrollbar-width:none] [&::-webkit-scrollbar]:hidden")}>
           <div style={{ padding: `0 ${CHAT_COLUMN_PADDING}px` }}>
             <div style={{ maxWidth: isMobile ? CHAT_COLUMN_MAX_WIDTH : CHAT_COLUMN_MAX_WIDTH_DESKTOP, margin: "0 auto" }}>
               <ExtensionStatusBar statuses={extensionStatuses} />

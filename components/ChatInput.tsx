@@ -1529,10 +1529,12 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
 
   return (
     <div
+      role="group"
+      aria-label={t("chatInput.composerLabel")}
       style={{
         flexShrink: 0,
         background: "transparent",
-         padding: "0 16px calc(8px + env(safe-area-inset-bottom))",
+        padding: "0 16px calc(8px + env(safe-area-inset-bottom))",
       }}
     >
       <ConfirmDialog
@@ -2362,6 +2364,7 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
             onInput={handleInput}
             onPaste={handlePaste}
             placeholder={t("chatInput.placeholder")}
+            aria-label={t("chatInput.composerLabel")}
             rows={1}
             style={{
               width: "100%",
