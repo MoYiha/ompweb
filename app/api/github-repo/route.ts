@@ -12,8 +12,14 @@ export async function GET(request: NextRequest) {
   if (!isFilePathAllowed(cwd, allowedRoots)) {
     return NextResponse.json({ error: "Access denied", code: "access_denied" }, { status: 403 });
   }
-  if (!fs.statSync(cwd, { throwIfNoEntry: false })?.isDirectory()) {
+  let stat: fs.Stats;
+  try {
+    stat = fs.statSync(cwd);
+  } catch {
     return NextResponse.json({ error: "Directory not found", code: "directory_not_found" }, { status: 404 });
+  }
+  if (!stat.isDirectory()) {
+    return NextResponse.json({ error: "Not a directory", code: "not_a_directory" }, { status: 400 });
   }
   if (!isExistingFilePathAllowed(cwd, allowedRoots)) {
     return NextResponse.json({ error: "Access denied", code: "access_denied" }, { status: 403 });
