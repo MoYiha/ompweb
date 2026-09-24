@@ -33,28 +33,53 @@ export function TabBar({ tabs, activeTabId, onSelectTab, onCloseTab, explorerSel
   const { t } = useI18n();
   const [hoveredClose, setHoveredClose] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
-  const navigableTabIds = [
+  const orderedTabIds = [
     ...(onSelectExplorer ? ["explorer"] : []),
     ...(onSelectGit ? ["git"] : []),
     ...tabs.map((tab) => tab.id),
   ];
+
   const selectTabById = (id: string) => {
     if (id === "explorer") onSelectExplorer?.();
     else if (id === "git") onSelectGit?.();
-    else onSelectTab(id);
+    else {
+      const tab = tabs.find((item) => item.id === id);
+      if (tab) onSelectTab(tab.id);
+    }
   };
+
   const focusTabById = (id: string) => {
-    requestAnimationFrame(() => listRef.current?.querySelector<HTMLElement>(`[data-tab-id="${CSS.escape(id)}"]`)?.focus());
+    requestAnimationFrame(() => {
+      listRef.current?.querySelector<HTMLElement>(`[data-tab-id="${CSS.escape(id)}"]`)?.focus();
+    });
   };
-  const navigateTab = (event: KeyboardEvent<HTMLElement>, currentId: string) => {
-    if (event.key !== "ArrowRight" && event.key !== "ArrowLeft") return;
-    event.preventDefault();
-    if (navigableTabIds.length === 0) return;
-    const current = navigableTabIds.indexOf(currentId);
-    const nextIndex = (current + (event.key === "ArrowRight" ? 1 : -1) + navigableTabIds.length) % navigableTabIds.length;
-    const next = navigableTabIds[nextIndex];
-    selectTabById(next);
-    focusTabById(next);
+
+  const handleTabKeyDown = (event: KeyboardEvent<HTMLElement>, id: string) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      selectTabById(id);
+      return;
+    }
+
+    const index = orderedTabIds.indexOf(id);
+    if (index < 0 || orderedTabIds.length === 0) return;
+    let nextIndex: number | null = null;
+    if (event.key === "ArrowRight") nextIndex = (index + 1) % orderedTabIds.length;
+    else if (event.key === "ArrowLeft") nextIndex = (index - 1 + orderedTabIds.length) % orderedTabIds.length;
+    else if (event.key === "Home") nextIndex = 0;
+    else if (event.key === "End") nextIndex = orderedTabIds.length - 1;
+    if (nextIndex !== null) {
+      event.preventDefault();
+      const nextId = orderedTabIds[nextIndex];
+      selectTabById(nextId);
+      focusTabById(nextId);
+      return;
+    }
+
+    if ((event.key === "Delete" || event.key === "Backspace") && tabs.some((tab) => tab.id === id)) {
+      event.preventDefault();
+      onCloseTab(id);
+    }
   };
 
   // Keep the active tab visible when the bar overflows horizontally.
@@ -99,10 +124,7 @@ export function TabBar({ tabs, activeTabId, onSelectTab, onCloseTab, explorerSel
           aria-label={t("sessionSidebar.explorer")}
           aria-controls="workspace-file-panel-explorer"
           title={explorerBadge > 0 ? t("sessionSidebar.explorerChanged", { count: explorerBadge }) : t("sessionSidebar.explorer")}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onSelectExplorer(); }
-            navigateTab(event, "explorer");
-          }}
+          onKeyDown={(event) => handleTabKeyDown(event, "explorer")}
           style={{
             display: "flex",
             alignItems: "center",
@@ -175,10 +197,7 @@ export function TabBar({ tabs, activeTabId, onSelectTab, onCloseTab, explorerSel
           aria-label={t("tabBar.git")}
           aria-controls="workspace-file-panel-git"
           title={gitBadge > 0 ? t("sessionSidebar.explorerChanged", { count: gitBadge }) : t("tabBar.git")}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onSelectGit(); }
-            navigateTab(event, "git");
-          }}
+          onKeyDown={(event) => handleTabKeyDown(event, "git")}
           style={{
             display: "flex",
             alignItems: "center",
@@ -253,11 +272,7 @@ export function TabBar({ tabs, activeTabId, onSelectTab, onCloseTab, explorerSel
             aria-selected={isActive}
             aria-label={tab.filePath}
             aria-controls="workspace-file-panel-file"
-            onKeyDown={(event) => {
-              if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onSelectTab(tab.id); }
-              if (event.key === "Delete" || event.key === "Backspace") { event.preventDefault(); onCloseTab(tab.id); }
-              navigateTab(event, tab.id);
-            }}
+            onKeyDown={(event) => handleTabKeyDown(event, tab.id)}
             onMouseDown={(e) => {
               if (e.button === 1) e.preventDefault();
             }}
@@ -320,8 +335,8 @@ export function TabBar({ tabs, activeTabId, onSelectTab, onCloseTab, explorerSel
             <button
               type="button"
               onClick={(e) => { e.stopPropagation(); onCloseTab(tab.id); }}
-              tabIndex={-1}
-              className="tabbar-close ui-focus-ring"
+              tabIndex={isActive ? 0 : -1}
+              onKeyDown={(event) => event.stopPropagation()}
               onMouseEnter={() => setHoveredClose(tab.id)}
               onMouseLeave={() => setHoveredClose(null)}
               style={{

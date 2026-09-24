@@ -636,6 +636,7 @@ export function SettingsConfig({ activeTab, toolCallsDefaultCollapsed, onToolCal
 
 
   const currentTab = getNormalizedActive(activeTab);
+  const nativeSettingsRequired = currentTab === "general" || currentTab === "safety" || currentTab === "models" || currentTab === "intelligence" || currentTab === "mcp";
   useEffect(() => {
     if (currentTab === "system") {
       void fetchWindowsServiceStatus();
@@ -801,7 +802,7 @@ export function SettingsConfig({ activeTab, toolCallsDefaultCollapsed, onToolCal
             <SettingsTabs active={currentTab} onSelect={handleSelectTab} workspaceReady={workspaceReady} layout={isMobile ? "horizontal" : "vertical"} attentionTabs={attentionTabs} />
 
             <div className="settings-content" style={contentStyle}>
-            {nativeSettingsLoading ? (
+            {nativeSettingsRequired && nativeSettingsLoading ? (
               <div className="settings-loading-state" role="status" aria-live="polite" aria-busy="true" aria-label={t("appShell.loading")}>
                 <div className="skeleton settings-loading-row" />
                 <div className="skeleton settings-loading-row" />
@@ -809,12 +810,12 @@ export function SettingsConfig({ activeTab, toolCallsDefaultCollapsed, onToolCal
               </div>
             ) : (
               <>
-            {nativeSettingsError && (
+            {nativeSettingsRequired && nativeSettingsError && (
               <div style={{ margin: 16 }}>
                 <Alert variant="error" description={nativeSettingsError} onDismiss={() => setNativeSettingsError(null)} />
               </div>
             )}
-            {nativeSettingsError && (
+            {nativeSettingsRequired && nativeSettingsError && (
               <div style={{ margin: "0 16px 16px", display: "flex", justifyContent: "flex-end" }}>
                 <button
                   type="button"

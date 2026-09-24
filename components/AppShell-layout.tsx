@@ -1,5 +1,7 @@
 "use client";
 
+import type { ReactNode } from "react";
+import { CircleAlert, MessageSquareText } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
 
 export function projectLabel(projectPath: string): string {
@@ -53,15 +55,46 @@ export function loadRightPanelWidth(): number | null {
   }
 }
 
-export function PanelLoadingFallback() {
-  const { t } = useI18n();
+type WorkspaceStateKind = "loading" | "error" | "empty";
+
+export function WorkspaceState({
+  kind,
+  title,
+  detail,
+}: {
+  kind: WorkspaceStateKind;
+  title: string;
+  detail?: ReactNode;
+}) {
   return (
-    <div role="status" aria-busy="true" aria-label={t("appShell.loading")} style={{ height: "100%", display: "flex", flexDirection: "column", gap: 10, padding: 16, boxSizing: "border-box" }}>
-      <div aria-hidden="true" className="skeleton" style={{ width: "38%", height: 14, flexShrink: 0 }} />
-      <div aria-hidden="true" className="skeleton" style={{ width: "100%", height: 36, flexShrink: 0 }} />
-      <div aria-hidden="true" style={{ display: "grid", gap: 8, paddingTop: 8 }}>
-        {[0, 1, 2, 3, 4].map((row) => <div key={row} className="skeleton" style={{ width: `${92 - row * 7}%`, height: 18 }} />)}
+    <div
+      className={`workspace-state workspace-state-${kind}`}
+      role={kind === "error" ? "alert" : kind === "loading" ? "status" : undefined}
+      aria-busy={kind === "loading" ? true : undefined}
+      aria-label={kind === "loading" ? title : undefined}
+    >
+      <div className="workspace-state-surface">
+        {kind === "loading" ? (
+          <div className="workspace-state-skeleton" aria-hidden="true">
+            <span />
+            <span />
+            <span />
+          </div>
+        ) : kind === "error" ? (
+          <CircleAlert className="workspace-state-icon" size={18} strokeWidth={1.8} aria-hidden="true" />
+        ) : (
+          <MessageSquareText className="workspace-state-icon" size={18} strokeWidth={1.8} aria-hidden="true" />
+        )}
+        <div className="workspace-state-copy">
+          <div className="workspace-state-title">{title}</div>
+          {detail ? <div className="workspace-state-detail">{detail}</div> : null}
+        </div>
       </div>
     </div>
   );
+}
+
+export function PanelLoadingFallback() {
+  const { t } = useI18n();
+  return <WorkspaceState kind="loading" title={t("appShell.loading")} />;
 }

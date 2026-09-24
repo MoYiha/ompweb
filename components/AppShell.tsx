@@ -60,6 +60,7 @@ import {
   loadRightPanelWidth,
   loadSidebarWidth,
   projectLabel,
+  WorkspaceState,
 } from "./AppShell-layout";
 import type { ManagedProject, SessionInfo, SessionTreeNode } from "@/lib/types";
 import type { ChatInputHandle } from "./ChatInput";
@@ -739,7 +740,10 @@ export function AppShell() {
   }, []);
 
   const handleSidebarToggle = useCallback(() => {
-    if (isMobile) setActiveTopPanel(null);
+    if (isMobile) {
+      setActiveTopPanel(null);
+      if (mobileToolsRef.current) mobileToolsRef.current.open = false;
+    }
     setSidebarOpen((open) => !open);
   }, [isMobile]);
 
@@ -1754,8 +1758,8 @@ export function AppShell() {
             <details
               ref={mobileToolsRef}
               className="shell-topbar-overflow"
-              data-compact={compactTopbar === null ? "pending" : compactTopbar}
-              open={compactTopbar ? undefined : true}
+              data-compact={isMobile ? "true" : compactTopbar === null ? "pending" : compactTopbar}
+              open={isMobile ? undefined : compactTopbar ? undefined : true}
               onToggle={(event) => {
                 if (!event.currentTarget.open) setActiveTopPanel(null);
               }}
@@ -1937,7 +1941,7 @@ export function AppShell() {
                   }}
                 >
                   {effectiveProject ? (
-                    <>
+                    <span className="shell-topbar-project-context" style={{ display: "contents" }}>
                       <Folder size={12} strokeWidth={1.8} style={{ opacity: 0.6, flexShrink: 0 }} aria-hidden="true" />
                       <span
                         style={{
@@ -1954,7 +1958,7 @@ export function AppShell() {
                         {projectLabel(effectiveProject)}
                       </span>
                       <span style={{ color: "var(--text-dim)", flexShrink: 0, opacity: 0.5 }}>/</span>
-                    </>
+                    </span>
                   ) : null}
                   <span
                     style={{
@@ -2151,35 +2155,27 @@ export function AppShell() {
               toolCallsDefaultCollapsed={toolCallsDefaultCollapsed}
             />
           ) : initialCwdStatus === "validating" ? (
-            <div
-              role="status"
-              aria-busy="true"
-              aria-label={t("appShell.openingWorkspace")}
-              style={{ height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10, padding: 24, boxSizing: "border-box", textAlign: "center" }}
-            >
-              <div aria-hidden="true" className="skeleton" style={{ width: "min(440px, 72%)", height: 18 }} />
-              <div aria-hidden="true" className="skeleton" style={{ width: "min(620px, 88%)", height: 12 }} />
-              <div aria-hidden="true" className="skeleton" style={{ width: "min(520px, 80%)", height: 12 }} />
-            </div>
+            <WorkspaceState
+              kind="loading"
+              title={t("appShell.openingWorkspace")}
+              detail={<span className="workspace-state-path">{initialNavigation.requestedCwd}</span>}
+            />
           ) : initialCwdStatus === "error" ? (
-            <div
-              role="alert"
-              style={{ height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8, padding: 24, color: "var(--text-muted)", textAlign: "center" }}
-            >
-              <div style={{ fontSize: 14, color: "var(--status-error)" }}>{t("appShell.unableToOpenWorkspace")}</div>
-              <div style={{ maxWidth: "min(720px, 100%)", overflowWrap: "anywhere", fontFamily: "var(--font-mono)", fontSize: 12 }}>
-                {initialNavigation.requestedCwd}
-              </div>
-              <div style={{ maxWidth: 720, fontSize: 12 }}>{initialCwdError}</div>
-            </div>
+            <WorkspaceState
+              kind="error"
+              title={t("appShell.unableToOpenWorkspace")}
+              detail={(
+                <>
+                  <span className="workspace-state-path">{initialNavigation.requestedCwd}</span>
+                  <span>{initialCwdError}</span>
+                </>
+              )}
+            />
           ) : !showPlaceholder ? (
             <PanelLoadingFallback />
+          ) : activeCwd ? (
+            <WorkspaceState kind="empty" title={t("appShell.selectSessionHint")} />
           ) : (
-            activeCwd ? (
-              <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-muted)", fontSize: 16 }}>
-                <span className="display-serif">{t("appShell.selectSessionHint")}</span>
-              </div>
-            ) : (
               <div style={{ position: "absolute", top: 12, left: 12, display: "flex", alignItems: "flex-start", gap: 8, userSelect: "none" }}>
                 <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.7, flexShrink: 0 }}>
                   <line x1="20" y1="12" x2="4" y2="12" /><polyline points="10 6 4 12 10 18" />
@@ -2216,7 +2212,6 @@ export function AppShell() {
                   </div>
                 </div>
               </div>
-            )
           )}
         </div>
           </>
@@ -2279,23 +2274,22 @@ export function AppShell() {
     </div>
     {!settingsTab && (
       <button
-      onClick={() => setRightPanelOpen((v) => !v)}
-      aria-expanded={rightPanelOpen}
-      aria-controls="workspace-file-panel"
-      title={rightPanelOpen ? t("appShell.hideFilePanel") : t("appShell.showFilePanel")}
-      aria-label={rightPanelOpen ? t("appShell.hideFilePanel") : t("appShell.showFilePanel")}
-      style={{
-        position: "fixed", top: "env(safe-area-inset-top, 0px)", right: "env(safe-area-inset-right, 0px)", zIndex: 300,
-        width: isMobile ? 44 : 36, height: isMobile ? 44 : 36, padding: 0,
-        background: "var(--bg-panel)", border: "none", borderLeft: "1px solid var(--border)", borderBottom: "1px solid var(--border)",
-        color: rightPanelOpen ? "var(--text)" : "var(--text-muted)",
-        cursor: "pointer", transition: "color var(--dur-fast) var(--ease-out-warm)",
-      }}
-      onMouseEnter={(e) => { e.currentTarget.style.color = "var(--text)"; }}
-      onMouseLeave={(e) => { e.currentTarget.style.color = rightPanelOpen ? "var(--text)" : "var(--text-muted)"; }}
-    >
-      {rightPanelOpen ? <X size={16} strokeWidth={1.8} aria-hidden="true" /> : <PanelRight size={16} strokeWidth={1.8} aria-hidden="true" />}
-    </button>
+        type="button"
+        className="shell-toolbar-btn shell-panel-toggle ui-focus-ring"
+        onClick={() => setRightPanelOpen((v) => !v)}
+        aria-expanded={rightPanelOpen}
+        aria-controls="workspace-file-panel"
+        aria-pressed={rightPanelOpen}
+        title={rightPanelOpen ? t("appShell.hideFilePanel") : t("appShell.showFilePanel")}
+        aria-label={rightPanelOpen ? t("appShell.hideFilePanel") : t("appShell.showFilePanel")}
+        style={{
+          position: "fixed", top: "env(safe-area-inset-top, 0px)", right: "env(safe-area-inset-right, 0px)", zIndex: 300,
+          width: isMobile ? 44 : 36, height: isMobile ? 44 : 36, padding: 0,
+          borderLeft: "1px solid var(--border)", borderBottom: "1px solid var(--border)",
+        }}
+      >
+        {rightPanelOpen ? <X size={16} strokeWidth={1.8} aria-hidden="true" /> : <PanelRight size={16} strokeWidth={1.8} aria-hidden="true" />}
+      </button>
     )}
     <AppUpdateDialog open={appUpdateDialogOpen} update={appUpdate} phase={appUpdatePhase} visibleStage={appUpdateVisibleStage} error={appUpdateError} onProceed={() => void proceedWithAppUpdate()} onNotNow={dismissAppUpdate} />
     {archiveBrowserOpen && (

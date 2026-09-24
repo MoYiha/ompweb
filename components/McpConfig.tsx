@@ -13,6 +13,7 @@ type McpServer = { name: string; config: Record<string, unknown> };
 type McpUserConfig = { path: string; servers: Array<{ name: string; status: string; type: string; enabled: boolean; valid: boolean }>; disabledServers: string[]; error?: string };
 type McpLiveStatus = "connected" | "connecting" | "not_connected" | "inactive" | "disabled" | "configured";
 type McpLiveServer = { name: string; source: string; status: McpLiveStatus; type?: string };
+type McpResponse = { servers?: McpServer[]; user?: McpUserConfig; inventory?: McpLiveServer[]; liveServers?: McpLiveServer[]; liveError?: string; path?: string; error?: string };
 
 const inputStyle = { width: "100%", padding: "7px 9px", border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "var(--bg)", color: "var(--text)", font: "12px var(--font-mono)" } as const;
 
@@ -50,6 +51,8 @@ export function McpConfig({ cwd, sessionId }: { cwd: string | null; sessionId?: 
 
   const load = useCallback(async () => {
     setLoading(true);
+    setMessage(null);
+    setLiveError(null);
     try {
       const params = new URLSearchParams();
       if (cwd) params.set("cwd", cwd);
@@ -64,9 +67,17 @@ export function McpConfig({ cwd, sessionId }: { cwd: string | null; sessionId?: 
           // Private mode: omit the opinion, spawn defaults apply.
         }
       }
-      const response = await fetch(`/api/mcp?${params}`);
-      const data = await response.json() as { servers?: McpServer[]; user?: McpUserConfig; inventory?: McpLiveServer[]; liveServers?: McpLiveServer[]; liveError?: string; path?: string; error?: string };
-      if (!response.ok || data.error) throw new Error(data.error || `HTTP ${response.status}`);
+
+      const read = async (includeLive: boolean): Promise<McpResponse> => {
+        const requestParams = new URLSearchParams(params);
+        requestParams.set("live", includeLive ? "1" : "0");
+        const response = await fetch(`/api/mcp?${requestParams}`);
+        const data = await response.json() as McpResponse;
+        if (!response.ok || data.error) throw new Error(data.error || `HTTP ${response.status}`);
+        return data;
+      };
+
+      const data = await read(false);
       setServers(data.servers ?? []);
       setUserConfig(data.user ?? null);
       setLiveServers(Array.isArray(data.liveServers) ? data.liveServers : null);
@@ -74,10 +85,23 @@ export function McpConfig({ cwd, sessionId }: { cwd: string | null; sessionId?: 
       setLiveError(data.liveError ?? null);
       setPath(data.path ?? null);
       setSelected((current) => current && data.servers?.some((server) => server.name === current) ? current : null);
+
+      // Live status can start or reuse an OMP child and wait for /mcp list.
+      // Keep it off the initial paint path; the static inventory is already
+      // useful and the live result can replace it when the command responds.
+      if (sessionId) {
+        void read(true).then((liveData) => {
+          setLiveServers(Array.isArray(liveData.liveServers) ? liveData.liveServers : null);
+          setLiveError(liveData.liveError ?? null);
+        }).catch((error) => {
+          setLiveError(error instanceof Error ? error.message : String(error));
+        });
+      }
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
       setMessage(detail);
     } finally {
+      setLoading(false);
     }
   }, [cwd, sessionId]);
 
