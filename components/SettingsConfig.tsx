@@ -359,7 +359,7 @@ function NativeSetting({ label, description, scope, searchId, children }: { labe
   );
 }
 
-export function SettingsConfig({ activeTab, toolCallsDefaultCollapsed, onToolCallsDefaultCollapsedChange, providerUsageVisible, onProviderUsageVisibleChange, scopeNativeSelectAll, onScopeNativeSelectAllChange, cwd, sessionId, onModelsSaved, onPluginsReloaded, appUpdate, ompUpdateAvailable, onRefreshAppUpdate, onOmpUpdateAvailabilityChange, onRequestAppUpdate, onSelectTab, onClose }: {
+export function SettingsConfig({ activeTab, toolCallsDefaultCollapsed, onToolCallsDefaultCollapsedChange, providerUsageVisible, onProviderUsageVisibleChange, scopeNativeSelectAll, onScopeNativeSelectAllChange, cwd, sessionId, onModelsSaved, onPluginsReloaded, appUpdate, ompUpdateAvailable, ompUpdatesDisabled, onRefreshAppUpdate, onOmpUpdateAvailabilityChange, onRequestAppUpdate, onSelectTab, onClose }: {
   activeTab: SettingsTab;
   toolCallsDefaultCollapsed: boolean;
   onToolCallsDefaultCollapsedChange: (collapsed: boolean) => void;
@@ -373,6 +373,7 @@ export function SettingsConfig({ activeTab, toolCallsDefaultCollapsed, onToolCal
   onPluginsReloaded: () => void;
   appUpdate: AppUpdateInfo | null;
   ompUpdateAvailable?: boolean;
+  ompUpdatesDisabled?: boolean;
   onRefreshAppUpdate: (force?: boolean) => Promise<AppUpdateInfo | null>;
   onOmpUpdateAvailabilityChange: (available: boolean) => void;
   onRequestAppUpdate: () => void;
@@ -418,6 +419,8 @@ export function SettingsConfig({ activeTab, toolCallsDefaultCollapsed, onToolCal
 
   const ompUpdateIsAvailable = Boolean(ompUpdateAvailable || update?.updateAvailable);
   const appUpdateIsAvailable = Boolean(appUpdate?.updateAvailable);
+  const appUpdatesDisabled = Boolean(appUpdate?.updatesDisabled);
+  const ompUpdateDisabled = ompUpdatesDisabled || Boolean(update?.updatesDisabled);
   const systemNeedsAttention = appUpdateIsAvailable || ompUpdateIsAvailable;
 
   const attentionTabs = useMemo<Partial<Record<SettingsTab, boolean | string>>>(() => {
@@ -534,6 +537,7 @@ export function SettingsConfig({ activeTab, toolCallsDefaultCollapsed, onToolCal
   }, [nativeSettings, saveNativeSettings]);
 
   const checkForUpdate = useCallback(async (force = false) => {
+    if (ompUpdateDisabled) return;
     setChecking(true);
     setMessage(null);
     try {
@@ -547,9 +551,10 @@ export function SettingsConfig({ activeTab, toolCallsDefaultCollapsed, onToolCal
     } finally {
       setChecking(false);
     }
-  }, [onOmpUpdateAvailabilityChange]);
+  }, [ompUpdateDisabled, onOmpUpdateAvailabilityChange]);
 
   const checkForAppUpdate = useCallback(async (force = false) => {
+    if (appUpdatesDisabled) return;
     setCheckingAppUpdate(true);
     setAppUpdateMessage(null);
     try {
@@ -559,7 +564,7 @@ export function SettingsConfig({ activeTab, toolCallsDefaultCollapsed, onToolCal
     } finally {
       setCheckingAppUpdate(false);
     }
-  }, [onRefreshAppUpdate]);
+  }, [appUpdatesDisabled, onRefreshAppUpdate]);
 
   const restartSessions = useCallback(async () => {
     setRestarting(true);
@@ -616,10 +621,10 @@ export function SettingsConfig({ activeTab, toolCallsDefaultCollapsed, onToolCal
   }, [currentTab, fetchWindowsServiceStatus]);
 
   useEffect(() => {
-    if (currentTab !== "system" || hasCheckedUpdates) return;
+    if (currentTab !== "system" || hasCheckedUpdates || ompUpdateDisabled) return;
     setHasCheckedUpdates(true);
     void checkForUpdate();
-  }, [currentTab, hasCheckedUpdates, checkForUpdate]);
+  }, [currentTab, hasCheckedUpdates, ompUpdateDisabled, checkForUpdate]);
 
   const trimmedQuery = searchQuery.trim().toLowerCase();
   const searchActive = trimmedQuery.length > 0;
@@ -1246,10 +1251,10 @@ export function SettingsConfig({ activeTab, toolCallsDefaultCollapsed, onToolCal
                         )}
                       </div>
                       <div style={{ marginTop: 4, color: appUpdateIsAvailable ? "var(--accent)" : "var(--text-muted)", fontFamily: "var(--font-mono)", fontSize: 12 }}>
-                        {checkingAppUpdate ? t("settingsConfig.checkingUpdates") : appUpdate?.updateAvailable ? t("appShell.updateVersion", { current: appUpdate.currentVersion ?? "?", available: appUpdate.availableVersion ?? "?" }) : appUpdate?.currentVersion ? t("settingsConfig.upToDate", { version: appUpdate.currentVersion }) : t("settingsConfig.versionUnavailable")}
+                        {appUpdatesDisabled ? t("settingsConfig.updatesDisabled") : checkingAppUpdate ? t("settingsConfig.checkingUpdates") : appUpdate?.updateAvailable ? t("appShell.updateVersion", { current: appUpdate.currentVersion ?? "?", available: appUpdate.availableVersion ?? "?" }) : appUpdate?.currentVersion ? t("settingsConfig.upToDate", { version: appUpdate.currentVersion }) : t("settingsConfig.versionUnavailable")}
                       </div>
                     </div>
-                    <button type="button" onClick={() => void checkForAppUpdate(true)} disabled={checkingAppUpdate} aria-label={t("settingsConfig.checkAppUpdates")} style={{ padding: "6px 10px", border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "transparent", color: "var(--text)", cursor: checkingAppUpdate ? "wait" : "pointer", fontSize: 12, display: "inline-flex", alignItems: "center", gap: 5 }}>
+                    <button type="button" onClick={() => void checkForAppUpdate(true)} disabled={checkingAppUpdate || appUpdatesDisabled} aria-label={t("settingsConfig.checkAppUpdates")} style={{ padding: "6px 10px", border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "transparent", color: "var(--text)", cursor: checkingAppUpdate || appUpdatesDisabled ? "not-allowed" : "pointer", fontSize: 12, display: "inline-flex", alignItems: "center", gap: 5 }}>
                       <RefreshCw size={13} aria-hidden="true" /> {t("settingsConfig.refresh")}
                     </button>
                   </div>
@@ -1306,10 +1311,10 @@ export function SettingsConfig({ activeTab, toolCallsDefaultCollapsed, onToolCal
                         )}
                       </div>
                       <div style={{ marginTop: 4, color: ompUpdateIsAvailable ? "var(--accent)" : "var(--text-muted)", fontFamily: "var(--font-mono)", fontSize: 12 }}>
-                        {checking || (!hasCheckedUpdates && !update) ? t("settingsConfig.checkingUpdates") : update?.updateAvailable ? t("appShell.updateVersion", { current: update.currentVersion ?? "?", available: update.availableVersion ?? "?" }) : update?.currentVersion ? t("settingsConfig.upToDate", { version: update.currentVersion }) : t("settingsConfig.versionUnavailable")}
+                        {ompUpdateDisabled ? t("settingsConfig.updatesDisabled") : checking || (!hasCheckedUpdates && !update) ? t("settingsConfig.checkingUpdates") : update?.updateAvailable ? t("appShell.updateVersion", { current: update.currentVersion ?? "?", available: update.availableVersion ?? "?" }) : update?.currentVersion ? t("settingsConfig.upToDate", { version: update.currentVersion }) : t("settingsConfig.versionUnavailable")}
                       </div>
                     </div>
-                    <button type="button" onClick={() => void checkForUpdate(true)} disabled={checking} aria-label={t("settingsConfig.checkOmpUpdates")} style={{ padding: "6px 10px", border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "transparent", color: "var(--text)", cursor: checking ? "wait" : "pointer", fontSize: 12, display: "inline-flex", alignItems: "center", gap: 5 }}>
+                    <button type="button" onClick={() => void checkForUpdate(true)} disabled={checking || ompUpdateDisabled} aria-label={t("settingsConfig.checkOmpUpdates")} style={{ padding: "6px 10px", border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "transparent", color: "var(--text)", cursor: checking || ompUpdateDisabled ? "not-allowed" : "pointer", fontSize: 12, display: "inline-flex", alignItems: "center", gap: 5 }}>
                       <RefreshCw size={13} aria-hidden="true" /> {t("settingsConfig.refresh")}
                     </button>
                   </div>

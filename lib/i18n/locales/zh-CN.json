@@ -65,6 +65,7 @@
   "settingsConfig.ompLabel": "OMP 运行时",
   "settingsConfig.checkingUpdates": "正在检查更新…",
   "settingsConfig.upToDate": "v{version} 已是最新版本",
+  "settingsConfig.updatesDisabled": "OMP_WEB_DISABLE_AUTOUPDATE 已禁用更新",
   "settingsConfig.versionUnavailable": "版本不可用",
   "settingsConfig.checkAppUpdates": "检查 ompweb 更新",
   "settingsConfig.checkOmpUpdates": "检查 OMP 更新",

@@ -65,6 +65,7 @@
   "settingsConfig.ompLabel": "OMP ランタイム",
   "settingsConfig.checkingUpdates": "更新を確認中…",
   "settingsConfig.upToDate": "v{version} は最新です",
+  "settingsConfig.updatesDisabled": "OMP_WEB_DISABLE_AUTOUPDATE により更新は無効です",
   "settingsConfig.versionUnavailable": "バージョンを取得できません",
   "settingsConfig.checkAppUpdates": "ompweb の更新を確認",
   "settingsConfig.checkOmpUpdates": "OMP の更新を確認",

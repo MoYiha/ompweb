@@ -237,6 +237,7 @@ export function AppShell() {
     }
   }, [advanceAppUpdateVisibleStage]);
   const [ompUpdateAvailable, setOmpUpdateAvailable] = useState(false);
+  const [ompUpdatesDisabled, setOmpUpdatesDisabled] = useState(false);
   // Bumped on visibilitychange so the mount-time update checks re-run.
   const [updateCheckKey, setUpdateCheckKey] = useState(0);
   // On mobile the sidebar is an overlay drawer; hide it by default so the chat
@@ -269,8 +270,9 @@ export function AppShell() {
       signal: controller.signal,
     })
       .then((response) => response.ok ? response.json() : null)
-      .then((data: { currentVersion?: string | null; availableVersion?: string | null; updateAvailable?: boolean; updateCommand?: string } | null) => {
+      .then((data: { currentVersion?: string | null; availableVersion?: string | null; updateAvailable?: boolean; updateCommand?: string; updatesDisabled?: boolean } | null) => {
         setOmpUpdateAvailable(Boolean(data?.updateAvailable));
+        setOmpUpdatesDisabled(Boolean(data?.updatesDisabled));
         if (!data?.updateAvailable || !data.availableVersion) return;
         // This check re-runs on every visibilitychange back to the tab, so a
         // version the user already dismissed must not be re-announced.
@@ -1690,6 +1692,7 @@ export function AppShell() {
             onPluginsReloaded={() => setSessionKey((k) => k + 1)}
             appUpdate={appUpdate}
             ompUpdateAvailable={ompUpdateAvailable}
+            ompUpdatesDisabled={ompUpdatesDisabled}
             onRefreshAppUpdate={refreshAppUpdate}
             onOmpUpdateAvailabilityChange={setOmpUpdateAvailable}
             onRequestAppUpdate={requestAppUpdateFromSettings}
