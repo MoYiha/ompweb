@@ -164,14 +164,18 @@ export const RightPanel = memo(function RightPanel({
         id="workspace-file-panel"
         ref={rightPanelRef}
         className={`right-panel-container${rightPanelOpen ? " right-panel-open" : " right-panel-closed"}${rightPanelResizing ? " right-panel-resizing" : ""}`}
+        role={isMobile ? "dialog" : undefined}
+        aria-modal={isMobile ? true : undefined}
         aria-label={t("appShell.filePanel")}
         aria-hidden={!rightPanelOpen}
+        tabIndex={isMobile ? -1 : undefined}
         inert={!rightPanelOpen ? true : undefined}
         style={{
           display: "flex",
           flexDirection: "column",
           borderLeft: "1px solid var(--border)",
           background: "var(--bg)",
+          zIndex: isMobile ? 210 : undefined,
           ...(!isMobile && rightPanelWidth !== null ? { "--right-panel-width": `${rightPanelWidth}px` } : {}),
         }}
       >

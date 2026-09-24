@@ -208,7 +208,7 @@ html[data-theme="one-light"], html.theme-one-light {
   --border: #DCDCDC;
   --text: #383A42;
   --text-muted: #696C77;
-  --text-dim: #A0A1A7;
+  --text-dim: #63666F;
   --accent: #2F65D9;
   --accent-strong: #2F65D9;
   --accent-hover: #1E4FB8;
@@ -234,9 +234,8 @@ html[data-theme="catppuccin-latte"], html.theme-catppuccin-latte {
   --border: #BCC0CC;
   --text: #4C4F69;
   --text-muted: #65687E;
-  --text-dim: #8C8FA1;
+  --text-dim: #5B5F72;
   --accent: #1E66F5;
-  --accent-strong: #1E66F5;
   --accent-hover: #04A5E5;
   --user-bg: #E4E8F8;
   --tool-bg: #E6E9EF;
@@ -260,7 +259,7 @@ html[data-theme="rose-pine-dawn"], html.theme-rose-pine-dawn {
   --border: #CECACD;
   --text: #575279;
   --text-muted: #6E6A86;
-  --text-dim: #9893A5;
+  --text-dim: #645F78;
   --accent: #286983;
   --accent-strong: #286983;
   --accent-hover: #1F5469;
@@ -286,7 +285,7 @@ html[data-theme="dracula"], html.theme-dracula {
   --border: #44475A;
   --text: #F8F8F2;
   --text-muted: #B4B8D0;
-  --text-dim: #6272A4;
+  --text-dim: #AEB5D0;
   --accent: #FF79C6;
   --accent-strong: #BD93F9;
   --accent-hover: #FFA2D8;
@@ -344,7 +343,7 @@ html[data-theme="one-dark-pro"], html.theme-one-dark-pro {
   --border: #3A3F4B;
   --text: #ABB2BF;
   --text-muted: #8B94A5;
-  --text-dim: #5C6370;
+  --text-dim: #AAB2C0;
   --accent: #61AFEF;
   --accent-strong: #4D8CD6;
   --accent-hover: #7EC7FF;
@@ -402,7 +401,7 @@ html[data-theme="catppuccin-mocha"], html.theme-catppuccin-mocha {
   --border: #45475A;
   --text: #CDD6F4;
   --text-muted: #A6ADC8;
-  --text-dim: #6C7086;
+  --text-dim: #AAB2D0;
   --accent: #CBA6F7;
   --accent-strong: #B4BEFE;
   --accent-hover: #D8BCF9;
@@ -489,7 +488,7 @@ html[data-theme="tokyo-night"], html.theme-tokyo-night {
   --border: #2F354D;
   --text: #C0CAF5;
   --text-muted: #9AA5CE;
-  --text-dim: #565F89;
+  --text-dim: #AAB6E6;
   --accent: #7AA2F7;
   --accent-strong: #567ECC;
   --accent-hover: #8DB4FF;
@@ -517,6 +516,7 @@ html[data-theme="tokyo-night"], html.theme-tokyo-night {
   --control-height: 32px;
   --control-height-lg: 36px;
   --control-padding-inline: 10px;
+  --border-strong: color-mix(in srgb, var(--border) 76%, var(--text) 24%);
   --focus-ring: 0 0 0 2px color-mix(in srgb, var(--accent) 22%, transparent);
   /* Warm diffuse shadows (light); dark theme swaps to ambient glow below. */
   --shadow-card: 0 1px 2px rgba(60,50,35,0.05), 0 2px 8px rgba(60,50,35,0.06);
@@ -3162,6 +3162,18 @@ html.dark .dropdown-surface :is(select, option) {
   outline-offset: 2px;
   border-radius: 3px;
 }
+.sidebar-resize-handle:focus-visible,
+.right-panel-resize-handle:focus-visible {
+  outline: 2px solid var(--accent) !important;
+  outline-offset: 2px;
+}
+.sidebar-session-search:focus-visible,
+.sidebar-project-identity input:focus-visible,
+.session-item-row input:focus-visible {
+  outline: 2px solid var(--accent) !important;
+  outline-offset: 1px;
+}
+
 .process-details-label {
   min-width: 0;
   overflow: hidden;
@@ -3661,6 +3673,17 @@ html.dark .dropdown-surface :is(select, option) {
   }
 }
 
+/* On phones the file panel covers the workspace rather than sitting beside
+   it. Keep the visual boundary explicit so the modal treatment is legible. */
+.right-panel-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 205;
+  background: var(--overlay-backdrop);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+}
+
 /* Mobile sidebar: slide in/out as overlay */
 @media (max-width: 640px) {
   .chat-stats-center {
@@ -3826,7 +3849,7 @@ html.dark .dropdown-surface :is(select, option) {
   .attachment-remove-button,
   .archive-search-input,
   .archive-search-clear {
-    min-height: 44px;
+    min-height: 44px !important;
   }
   .attachment-remove-button,
   .file-explorer-search-clear,
@@ -3836,6 +3859,17 @@ html.dark .dropdown-surface :is(select, option) {
   .load-retry-button {
     min-width: 44px;
     min-height: 44px;
+  }
+  .toast-close-button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+  .sidebar-new-session,
+  .process-details-toggle,
+  .activity-row-trigger,
+  .session-item-icon-button,
+  .tool-call-input-toggle {
+    min-height: 44px !important;
   }
   .git-change-row {
     min-height: 44px;

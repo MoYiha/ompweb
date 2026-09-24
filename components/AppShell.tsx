@@ -940,7 +940,11 @@ export function AppShell() {
   // User-chosen pixel width (null = fluid 42% default), persisted.
   const [rightPanelWidth, setRightPanelWidth] = useState<number | null>(null);
   const [rightPanelResizing, setRightPanelResizing] = useState(false);
-  const rightPanelRef = useRef<HTMLDivElement>(null);
+  const rightPanelRef = useModalDialog<HTMLDivElement>({
+    onClose: () => setRightPanelOpen(false),
+    active: isMobile && rightPanelOpen && !settingsTab,
+  });
+  const rightPanelIsModal = isMobile && rightPanelOpen && !settingsTab;
   const pendingRightPanelWidthRef = useRef<number | null>(null);
   const rightResizeHandlersRef = useRef<{ onMove: (ev: MouseEvent) => void; onUp: () => void } | null>(null);
   useEffect(() => {
@@ -1648,8 +1652,8 @@ export function AppShell() {
         ref={sidebarContainerRef}
         className={`sidebar-container${sidebarOpen ? " sidebar-open" : " sidebar-closed"}${mobileSidebarReady ? "" : " sidebar-mobile-pending"}${sidebarResizing ? " sidebar-resizing" : ""}`}
         aria-label={t("projects.heading")}
-        aria-hidden={mobileSidebarReady && !sidebarOpen ? true : undefined}
-        inert={mobileSidebarReady && !sidebarOpen ? true : undefined}
+        aria-hidden={mobileSidebarReady && (!sidebarOpen || rightPanelIsModal) ? true : undefined}
+        inert={mobileSidebarReady && (!sidebarOpen || rightPanelIsModal) ? true : undefined}
         style={{
           background: "var(--bg-panel)",
           borderRight: "1px solid var(--border)",
@@ -1667,6 +1671,7 @@ export function AppShell() {
       {/* Resize handle — desktop only, hidden while the sidebar is closed */}
       {!isMobile && sidebarOpen && (
         <div
+          className="sidebar-resize-handle"
           role="separator"
           aria-orientation="vertical"
           aria-label={t("appShell.resizeSidebar")}
@@ -1695,7 +1700,7 @@ export function AppShell() {
       )}
 
       {/* Center: chat */}
-      <main id="main-content" style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
+      <main id="main-content" tabIndex={-1} inert={rightPanelIsModal ? true : undefined} style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
         {settingsTab ? (
           <SettingsConfig
             activeTab={settingsTab}
@@ -2191,6 +2196,10 @@ export function AppShell() {
                     })()}
                   <button
                     type="button"
+                    onClick={() => {
+                      setSidebarOpen(true);
+                      setAddProjectOpen(true);
+                    }}
                     style={{ display: "flex", alignItems: "center", gap: 6, width: "fit-content", minHeight: 36, marginTop: 12, padding: "7px 10px", border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "var(--bg-panel)", color: "var(--text)", cursor: "pointer", fontSize: 12, fontWeight: 600, boxShadow: "var(--shadow-card)" }}
                     className="ui-focus-ring"
                   >
@@ -2206,6 +2215,13 @@ export function AppShell() {
           </>
         )}
       </main>
+      {!settingsTab && rightPanelHasOpened && rightPanelIsModal && (
+        <div
+          className="right-panel-backdrop"
+          aria-hidden="true"
+          onClick={() => setRightPanelOpen(false)}
+        />
+      )}
       {!settingsTab && rightPanelHasOpened && (
         <RightPanel
         fileTabs={fileTabs}
@@ -2261,8 +2277,7 @@ export function AppShell() {
       title={rightPanelOpen ? t("appShell.hideFilePanel") : t("appShell.showFilePanel")}
       aria-label={rightPanelOpen ? t("appShell.hideFilePanel") : t("appShell.showFilePanel")}
       style={{
-        position: "fixed", top: "env(safe-area-inset-top, 0px)", right: 0, zIndex: 300,
-        display: "flex", alignItems: "center", justifyContent: "center",
+        position: "fixed", top: "env(safe-area-inset-top, 0px)", right: "env(safe-area-inset-right, 0px)", zIndex: 300,
         width: isMobile ? 44 : 36, height: isMobile ? 44 : 36, padding: 0,
         background: "var(--bg-panel)", border: "none", borderLeft: "1px solid var(--border)", borderBottom: "1px solid var(--border)",
         color: rightPanelOpen ? "var(--text)" : "var(--text-muted)",
