@@ -1,0 +1,22 @@
+import fs from "fs";
+import { NextRequest, NextResponse } from "next/server";
+import { getAllowedFileRoots, isExistingFilePathAllowed, isFilePathAllowed, isWindowsAbsolutePath } from "@/lib/file-access";
+import { resolveGithubRepo } from "@/lib/github-repo";
+
+export async function GET(request: NextRequest) {
+  const cwd = request.nextUrl.searchParams.get("cwd")?.trim() ?? "";
+  if (!cwd || (!cwd.startsWith("/") && !isWindowsAbsolutePath(cwd))) {
+    return NextResponse.json({ error: "cwd must be an absolute path", code: "cwd_must_be_absolute" }, { status: 400 });
+  }
+  const allowedRoots = await getAllowedFileRoots();
+  if (!isFilePathAllowed(cwd, allowedRoots)) {
+    return NextResponse.json({ error: "Access denied", code: "access_denied" }, { status: 403 });
+  }
+  if (!fs.statSync(cwd, { throwIfNoEntry: false })?.isDirectory()) {
+    return NextResponse.json({ error: "Directory not found", code: "directory_not_found" }, { status: 404 });
+  }
+  if (!isExistingFilePathAllowed(cwd, allowedRoots)) {
+    return NextResponse.json({ error: "Access denied", code: "access_denied" }, { status: 403 });
+  }
+  return NextResponse.json({ repo: await resolveGithubRepo(cwd) });
+}
