@@ -225,7 +225,9 @@ function SidebarPortalMenu({
   return createPortal(
     <div
       ref={menuRef}
-      onClickCapture={(event) => {
+      // Bubble phase, not capture: closing in capture flushes the unmount
+      // before the item's own onClick runs, and React then drops that click.
+      onClick={(event) => {
         const target = event.target;
         if (target instanceof Element && target.closest('[role="menuitem"]')) closeAndRestore();
       }}
